@@ -1,4 +1,5 @@
 import Header from '@/components/Header'
+import HeroSection from '@/components/Hero'
 import React from 'react'
 
 const Home = () => {
@@ -6,7 +7,7 @@ const Home = () => {
     <div>
       <Header />
       <div className='grid-background'>
-
+        <HeroSection />
       </div>
     </div>
   )
