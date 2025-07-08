@@ -5,6 +5,9 @@ const Home = () => {
   return (
     <div>
       <Header />
+      <div className='grid-background'>
+
+      </div>
     </div>
   )
 }
