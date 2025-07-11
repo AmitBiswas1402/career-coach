@@ -9,7 +9,7 @@ const IndustryInsights = async() => {
     }
   return (
     <div>
-        
+        Industry Insights
     </div>
   )
 }

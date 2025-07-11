@@ -1,5 +1,7 @@
 import { getUserOnboardingStatus } from "@/actions/user"
 import { redirect } from "next/navigation"
+import OnboardingForm from "./(components)/OnboardingForm"
+import { industries } from "@/data/industries"
 
 
 const OnboardingPage = async () => {
@@ -11,6 +13,7 @@ const OnboardingPage = async () => {
 
   return (
     <main>
+      <OnboardingForm industries={industries} />
     </main>
   )
 }
