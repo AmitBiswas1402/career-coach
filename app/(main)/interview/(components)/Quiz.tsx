@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { generateQuiz, saveQuizResult } from "@/actions/interview";
 import useFetch from "@/hooks/useFetch";
 import { BarLoader } from "react-spinners";
+import QuizResult from "./QuizResult";
 
 // Define types
 interface QuizQuestion {
@@ -53,6 +54,8 @@ export default function Quiz() {
     data: resultData,
     setData: setResultData,
   } = useFetch<AssessmentResult>(saveQuizResult);
+
+  // console.log(resultData);
 
   useEffect(() => {
     if (quizData) {
@@ -102,7 +105,7 @@ export default function Quiz() {
     setAnswers([]);
     setShowExplanation(false);
     generateQuizFn();
-    setResultData(null);
+    setResultData(undefined);
   };
 
   if (generatingQuiz) {
@@ -112,8 +115,7 @@ export default function Quiz() {
   if (resultData) {
     return (
       <div className="mx-2">
-        {/* Render result component here, if exists */}
-        {/* <QuizResult result={resultData} onStartNew={startNewQuiz} /> */}
+        <QuizResult result={resultData} onStartNew={startNewQuiz} />
       </div>
     );
   }
@@ -182,7 +184,9 @@ export default function Quiz() {
         )}
         <Button
           onClick={handleNext}
-          disabled={!answers[currentQuestion] || savingResult}
+          disabled={
+            answers[currentQuestion] === null || answers[currentQuestion] === ""
+          }
           className="ml-auto"
         >
           {savingResult ? (
