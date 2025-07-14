@@ -1,8 +1,9 @@
 "use server";
 
 import { db } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getOrCreateUser } from "@/app/lib/getOrCreateUser";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -21,25 +22,19 @@ type QuestionResult = {
   explanation: string;
 };
 
+// ✅ REFACTORED: Uses getOrCreateUser
 export async function generateQuiz() {
   const { userId } = await auth();
-
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: {
-      clerkUserId: userId,
-    },
-  });
-
-  if (!user) {
-    throw new Error("User not found");
-  }
+  const clerkUser = await currentUser();
+  const user = await getOrCreateUser(
+    userId,
+    clerkUser?.emailAddresses[0]?.emailAddress || ""
+  );
 
   const prompt = `
-    Generate 10 technical interview questions for a ${
-      user.industry
-    } professional${
+    Generate 10 technical interview questions for a ${user.industry ?? "tech"} professional${
     user.skills?.length ? ` with expertise in ${user.skills.join(", ")}` : ""
   }.
     
@@ -61,7 +56,7 @@ export async function generateQuiz() {
   try {
     const result = await model.generateContent(prompt);
     const response = result.response;
-    const text = response.text();
+    const text = await response.text();
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
     const quiz = JSON.parse(cleanedText);
 
@@ -72,6 +67,7 @@ export async function generateQuiz() {
   }
 }
 
+// ✅ REFACTORED: Uses getOrCreateUser
 export async function saveQuizResult(
   questions: Question[],
   answers: string[],
@@ -80,11 +76,11 @@ export async function saveQuizResult(
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
-  if (!user) throw new Error("User not found");
+  const clerkUser = await currentUser();
+  const user = await getOrCreateUser(
+    userId,
+    clerkUser?.emailAddresses[0]?.emailAddress || ""
+  );
 
   const questionResults: QuestionResult[] = questions.map((q, index) => ({
     question: q.question,
@@ -106,7 +102,7 @@ export async function saveQuizResult(
       .join("\n\n");
 
     const improvementPrompt = `
-The user got the following ${user.industry} technical interview questions wrong:
+The user got the following ${user.industry ?? "tech"} technical interview questions wrong:
 
 ${wrongQuestionsText}
 
@@ -118,7 +114,7 @@ Don't explicitly mention the mistakes, instead focus on what to learn/practice.
 
     try {
       const tipResult = await model.generateContent(improvementPrompt);
-      const tipText = await tipResult.response.text(); // Make sure .text() is a Promise
+      const tipText = await tipResult.response.text();
       improvementTip = tipText.trim();
     } catch (error) {
       console.error("Error generating improvement tip:", error);
@@ -143,15 +139,16 @@ Don't explicitly mention the mistakes, instead focus on what to learn/practice.
   }
 }
 
+// ✅ REFACTORED: Uses getOrCreateUser
 export async function getAssessments() {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
-  if (!user) throw new Error("User not found");
+  const clerkUser = await currentUser();
+  const user = await getOrCreateUser(
+    userId,
+    clerkUser?.emailAddresses[0]?.emailAddress || ""
+  );
 
   try {
     const assessments = await db.assessment.findMany({

@@ -1,7 +1,8 @@
 "use server";
 
+import { getOrCreateUser } from "@/app/lib/getOrCreateUser";
 import { db } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -9,28 +10,28 @@ const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 export const generateAIInsights = async (industry: any) => {
   const prompt = `
-          Analyze the current state of the ${industry} industry and provide insights in ONLY the following JSON format without any additional notes or explanations:
-          {
-            "salaryRanges": [
-              { "role": "string", "min": number, "max": number, "median": number, "location": "string" }
-            ],
-            "growthRate": number,
-            "demandLevel": "High" | "Medium" | "Low",
-            "topSkills": ["skill1", "skill2"],
-            "marketOutlook": "Positive" | "Neutral" | "Negative",
-            "keyTrends": ["trend1", "trend2"],
-            "recommendedSkills": ["skill1", "skill2"]
-          }
-          
-          IMPORTANT: Return ONLY the JSON. No additional text, notes, or markdown formatting.
-          Include at least 5 common roles for salary ranges.
-          Growth rate should be a percentage.
-          Include at least 5 skills and trends.
-        `;
+    Analyze the current state of the ${industry} industry and provide insights in ONLY the following JSON format without any additional notes or explanations:
+    {
+      "salaryRanges": [
+        { "role": "string", "min": number, "max": number, "median": number, "location": "string" }
+      ],
+      "growthRate": number,
+      "demandLevel": "High" | "Medium" | "Low",
+      "topSkills": ["skill1", "skill2"],
+      "marketOutlook": "Positive" | "Neutral" | "Negative",
+      "keyTrends": ["trend1", "trend2"],
+      "recommendedSkills": ["skill1", "skill2"]
+    }
+
+    IMPORTANT: Return ONLY the JSON. No additional text, notes, or markdown formatting.
+    Include at least 5 common roles for salary ranges.
+    Growth rate should be a percentage.
+    Include at least 5 skills and trends.
+  `;
 
   const result = await model.generateContent(prompt);
   const response = result.response;
-  const text = response.text();
+  const text = await response.text(); // 🧠 Await it as it's a Promise
   const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
 
   return JSON.parse(cleanedText);
@@ -38,38 +39,44 @@ export const generateAIInsights = async (industry: any) => {
 
 export async function getIndustryInsights() {
   const { userId } = await auth();
-
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
+  const clerkUser = await currentUser();
+  const user = await getOrCreateUser(
+    userId,
+    clerkUser?.emailAddresses[0]?.emailAddress || ""
+  );
+
+  const fullUser = await db.user.findUnique({
     where: {
-      clerkUserId: userId,
+      id: user.id,
     },
     include: {
       industryInsight: true,
     },
   });
 
-  if (!user) {
-    throw new Error("User not found");
+  if (!fullUser) {
+    throw new Error("User not found after getOrCreate");
   }
 
-  if (!user.industryInsight) {
-    if (!user.industry) {
+  if (!fullUser.industryInsight) {
+    if (!fullUser.industry) {
       throw new Error("User industry not set");
     }
-    const insights = await generateAIInsights(user.industry);
+
+    const insights = await generateAIInsights(fullUser.industry);
 
     const industryInsight = await db.industryInsight.create({
       data: {
-        industry: user.industry,
+        industry: fullUser.industry,
         ...insights,
-        nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 360),
+        nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // fixed 360→1000
       },
     });
 
     return industryInsight;
   }
 
-  return user.industryInsight;
+  return fullUser.industryInsight;
 }
