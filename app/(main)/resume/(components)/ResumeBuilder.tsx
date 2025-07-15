@@ -21,6 +21,9 @@ import { useUser } from "@clerk/nextjs";
 import { resumeSchema } from "@/app/lib/schema";
 import useFetch from "@/hooks/useFetch";
 import z from "zod";
+import { EntryForm } from "./EntryForm";
+import MDEditor from "@uiw/react-md-editor";
+import { entriesToMarkdown } from "@/app/lib/helper";
 
 type ResumeFormValues = z.infer<typeof resumeSchema>;
 
@@ -32,7 +35,9 @@ const ResumeBuilder = ({ initialContent }: ResumeBuilderProps) => {
   const [activeTab, setActiveTab] = useState("edit");
   const [previewContent, setPreviewContent] = useState(initialContent);
   const { user } = useUser();
-  const [resumeMode, setResumeMode] = useState("preview");
+  const [resumeMode, setResumeMode] = useState<"live" | "edit" | "preview">(
+    "preview"
+  );
 
   const {
     control,
@@ -65,23 +70,92 @@ const ResumeBuilder = ({ initialContent }: ResumeBuilderProps) => {
     if (initialContent) setActiveTab("preview");
   }, [initialContent]);
 
-  // Update preview content when form values change
-  //   useEffect(() => {
-  //     if (activeTab === "edit") {
-  //       const newContent = getCombinedContent();
-  //       setPreviewContent(newContent ? newContent : initialContent);
-  //     }
-  //   }, [formValues, activeTab]);
+  useEffect(() => {
+    if (activeTab === "edit") {
+      const newContent = getCombinedContent();
+      setPreviewContent(newContent ? newContent : initialContent);
+    }
+  }, [formValues, activeTab]);
 
-  const onSubmit = async (data) => {
+  // Handle save result
+  useEffect(() => {
+    if (saveResult && !isSaving) {
+      toast.success("Resume saved successfully!");
+    }
+    if (saveError) {
+      toast.error(saveError.message || "Failed to save resume");
+    }
+  }, [saveResult, saveError, isSaving]);
+
+  const getContactMarkdown = () => {
+    const { contactInfo } = formValues;
+    const parts: string[] = [];
+
+    if (contactInfo.email) parts.push(`📧 ${contactInfo.email}`);
+    if (contactInfo.mobile) parts.push(`📱 ${contactInfo.mobile}`);
+    if (contactInfo.linkedin)
+      parts.push(`💼 [LinkedIn](${contactInfo.linkedin})`);
+    if (contactInfo.twitter) parts.push(`🐦 [Twitter](${contactInfo.twitter})`);
+
+    if (!user || !user.fullName) return "";
+
+    return parts.length > 0
+      ? `## <div align="center">${
+          user.fullName
+        }</div>\n\n<div align="center">\n\n${parts.join(" | ")}\n\n</div>`
+      : "";
+  };
+
+  const getCombinedContent = () => {
+    const { summary, skills, experience, education, projects } = formValues;
+    return [
+      getContactMarkdown(),
+      summary && `## Professional Summary\n\n${summary}`,
+      skills && `## Skills\n\n${skills}`,
+      entriesToMarkdown(experience, "Work Experience"),
+      entriesToMarkdown(education, "Education"),
+      entriesToMarkdown(projects, "Projects"),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  };
+
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const generatePDF = async () => {
+    setIsGenerating(true);
     try {
+      const element = document.getElementById("resume-pdf");
+      const opt = {
+        margin: [15, 15],
+        filename: "resume.pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
+      };
+
+      await html2pdf().set(opt).from(element).save();
+    } catch (error) {
+      console.error("PDF generation error:", error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const onSubmit = async (data: any) => {
+    try {
+      if (!previewContent) {
+        toast.error("No content to save");
+        return;
+      }
+
       const formattedContent = previewContent
-        .replace(/\n/g, "\n") // Normalize newlines
-        .replace(/\n\s*\n/g, "\n\n") // Normalize multiple newlines to double newlines
+        .replace(/\n/g, "\n")
+        .replace(/\n\s*\n/g, "\n\n")
         .trim();
 
       console.log(previewContent, formattedContent);
-      await saveResumeFn(previewContent);
+      await saveResumeFn(formattedContent);
     } catch (error) {
       console.error("Save error:", error);
     }
@@ -95,13 +169,35 @@ const ResumeBuilder = ({ initialContent }: ResumeBuilderProps) => {
         </h1>
 
         <div className="space-x-2">
-          <Button variant="destructive">
-            <Save className="h-4 w-4" />
-            Save
+          <Button
+            variant="destructive"
+            onClick={handleSubmit(onSubmit)}
+            disabled={isSaving ?? false} 
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                Save
+              </>
+            )}
           </Button>
-          <Button variant="destructive">
-            <Download className="h-4 w-4" />
-            Download PDF
+          <Button onClick={generatePDF} disabled={isGenerating}>
+            {isGenerating ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating PDF...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Download PDF
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -276,14 +372,67 @@ const ResumeBuilder = ({ initialContent }: ResumeBuilderProps) => {
                   {errors.projects.message}
                 </p>
               )}
-            </div>            
-
+            </div>
           </form>
         </TabsContent>
-        <TabsContent value="preview">Change your password here.</TabsContent>
+        <TabsContent value="preview">
+          {activeTab === "preview" && (
+            <Button
+              variant="link"
+              type="button"
+              className="mb-2"
+              onClick={() =>
+                setResumeMode(resumeMode === "preview" ? "edit" : "preview")
+              }
+            >
+              {resumeMode === "preview" ? (
+                <>
+                  <Edit className="h-4 w-4" />
+                  Edit Resume
+                </>
+              ) : (
+                <>
+                  <Monitor className="h-4 w-4" />
+                  Show Preview
+                </>
+              )}
+            </Button>
+          )}
+
+          {activeTab === "preview" && resumeMode !== "preview" && (
+            <div className="flex p-3 gap-2 items-center border-2 border-yellow-600 text-yellow-600 rounded mb-2">
+              <AlertTriangle className="h-5 w-5" />
+              <span className="text-sm">
+                You will lose editied markdown if you update the form data.
+              </span>
+            </div>
+          )}
+          <div className="border rounded-lg">
+            <MDEditor
+              value={previewContent}
+              onChange={setPreviewContent}
+              height={800}
+              preview={resumeMode}
+            />
+          </div>
+          <div className="hidden">
+            <div id="resume-pdf">
+              <MDEditor.Markdown
+                source={previewContent}
+                style={{
+                  background: "white",
+                  color: "black",
+                }}
+              />
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
     </div>
   );
 };
 
 export default ResumeBuilder;
+function html2pdf() {
+  throw new Error("Function not implemented.");
+}
