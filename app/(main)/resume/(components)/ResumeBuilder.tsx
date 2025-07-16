@@ -126,6 +126,13 @@ const ResumeBuilder = ({ initialContent }: ResumeBuilderProps) => {
     setIsGenerating(true);
     try {
       const element = document.getElementById("resume-pdf");
+      if (!element) {
+        toast.error("Resume preview not found");
+        return;
+      }
+
+      const html2pdf = (await import("html2pdf.js")).default;
+
       const opt = {
         margin: [15, 15],
         filename: "resume.pdf",
@@ -134,9 +141,10 @@ const ResumeBuilder = ({ initialContent }: ResumeBuilderProps) => {
         jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
       };
 
-      await html2pdf().set(opt).from(element).save();
+      html2pdf().set(opt).from(element).save();
     } catch (error) {
       console.error("PDF generation error:", error);
+      toast.error("Failed to generate PDF");
     } finally {
       setIsGenerating(false);
     }
@@ -172,7 +180,8 @@ const ResumeBuilder = ({ initialContent }: ResumeBuilderProps) => {
           <Button
             variant="destructive"
             onClick={handleSubmit(onSubmit)}
-            disabled={isSaving ?? false} 
+            disabled={isSaving}
+            className="cursor-pointer"
           >
             {isSaving ? (
               <>
@@ -186,7 +195,11 @@ const ResumeBuilder = ({ initialContent }: ResumeBuilderProps) => {
               </>
             )}
           </Button>
-          <Button onClick={generatePDF} disabled={isGenerating}>
+          <Button
+            onClick={generatePDF}
+            disabled={isGenerating}
+            className="cursor-pointer"
+          >
             {isGenerating ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
