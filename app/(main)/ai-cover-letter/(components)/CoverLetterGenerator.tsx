@@ -27,14 +27,15 @@ import { z } from "zod";
 type CoverLetterFormData = z.infer<typeof coverLetterSchema>;
 
 type CoverLetterResponse = {
-  id: string;
-  content: string;
   companyName: string;
   jobTitle: string;
-  jobDescription: string;
-  status: string;
+  jobDescription: string | null;
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
   userId: string;
-  createdAt: string;
+  content: string;
+  status: string;
 };
 
 export default function CoverLetterGenerator() {
@@ -53,7 +54,7 @@ export default function CoverLetterGenerator() {
     loading: generating,
     fn: generateLetterFn,
     data: generatedLetter,
-  } = useFetch<CoverLetterFormData, CoverLetterResponse>(generateCoverLetter);
+  } = useFetch<CoverLetterResponse, [CoverLetterFormData]>(generateCoverLetter);
 
   useEffect(() => {
     if (generatedLetter) {
@@ -65,7 +66,7 @@ export default function CoverLetterGenerator() {
 
   const onSubmit = async (data: CoverLetterFormData) => {
     try {
-      await generateLetterFn(data); 
+      await generateLetterFn(data);
     } catch (error: any) {
       toast.error(error.message || "Failed to generate cover letter");
     }
