@@ -1,0 +1,16 @@
+export const categories = [
+  { id: 1, name: "North Indian", image: "/categories/north.jpg" },
+  { id: 2, name: "Biryani", image: "/categories/biryani.jpg" },
+  { id: 3, name: "Desserts", image: "/categories/dessert.jpg" },
+  { id: 4, name: "Chinese", image: "/categories/chinese.jpg" },
+  { id: 5, name: "South Indian", image: "/categories/south.jpg" },
+  { id: 6, name: "Cake", image: "/categories/cake.jpg" },
+  { id: 7, name: "Noodles", image: "/categories/noodles.jpg" },
+  { id: 8, name: "Burger", image: "/categories/burger.jpg" },
+  { id: 9, name: "Dosa", image: "/categories/dosa.jpg" },
+  { id: 10, name: "Salad", image: "/categories/salad.jpg" },
+  { id: 11, name: "Paratha", image: "/categories/paratha.jpg" },
+  { id: 12, name: "Coffee", image: "/categories/coffee.jpg" },
+  { id: 13, name: "Rasgulla", image: "/categories/rasgulla.jpg" },
+  { id: 14, name: "Pasta", image: "/categories/pasta.jpg" },
+];

@@ -1,6 +1,6 @@
 "use client";
 
-// import { Button } from "./ui/button";
+import { Button } from "./ui/button";
 import { SignInButton, useAuth, UserButton } from "@clerk/nextjs";
 
 const Users = () => {
@@ -12,7 +12,7 @@ const Users = () => {
         <UserButton />
       ) : (
         <SignInButton mode="modal">
-          {/* <Button variant="default">Sign In</Button> */}
+          <Button variant="default">Sign In</Button>
         </SignInButton>
       )}
     </div>
