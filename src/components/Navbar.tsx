@@ -12,10 +12,8 @@ const Navbar = () => {
       {/* Spacer */}
       <div className="ml-auto" />
 
-      {/* User icon placeholder (re-add Clerk later with fresh keys) */}
-      <div className="shrink-0 text-white cursor-pointer hover:text-gray-300 transition-colors">
-        <Users />
-      </div>
+      {/* User actions */}
+      <Users />
     </div>
   )
 }
