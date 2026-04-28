@@ -3,21 +3,37 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { restaurants } from "@/lib/resturants";
+import { foodCategories } from "@/lib/foods";
 
 export default function SearchPage() {
   const searchParams = useSearchParams();
   const query = searchParams.get("query") || "";
   const normalizedQuery = query.trim().toLowerCase();
 
+  const categoryNameById = new Map(
+    foodCategories.map((category) => [category.id, category.name.toLowerCase()])
+  );
+
   const filteredRestaurants = restaurants.filter((restaurant) => {
     if (!normalizedQuery) {
       return true;
     }
 
+    const matchesCategory = restaurant.categories.some((categoryId) => {
+      const categoryName = categoryNameById.get(categoryId);
+      return categoryName?.includes(normalizedQuery);
+    });
+
+    const matchesMenuItem = restaurant.menu.some((item) =>
+      item.name.toLowerCase().includes(normalizedQuery)
+    );
+
     return (
       restaurant.type.toLowerCase().includes(normalizedQuery) ||
       restaurant.name.toLowerCase().includes(normalizedQuery) ||
-      restaurant.description.toLowerCase().includes(normalizedQuery)
+      restaurant.description.toLowerCase().includes(normalizedQuery) ||
+      matchesCategory ||
+      matchesMenuItem
     );
   });
 

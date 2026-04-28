@@ -22,7 +22,7 @@ export default clerkMiddleware(async (auth, req) => {
 
   // User has NOT selected a role yet
   const hasSelectedRole = roleCompletionCookie || roleSelected === true || Boolean(role);
-  const needsRoleSelection = !hasSelectedRole;
+  const needsRoleSelection = roleSelected === false && !roleCompletionCookie;
 
   // Redirect new users to role selection page
   if (needsRoleSelection && !isRoleSelectRoute(req)) {
