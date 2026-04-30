@@ -1,8 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const isOwnerRoute = createRouteMatcher(["/dashboard/owner(.*)"]);
-const isCustomerRoute = createRouteMatcher(["/dashboard/customer(.*)"]);
 const isRoleSelectRoute = createRouteMatcher(["/role-select(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -32,20 +30,6 @@ export default clerkMiddleware(async (auth, req) => {
   // Prevent users from revisiting role select page
   if (!needsRoleSelection && isRoleSelectRoute(req)) {
     return NextResponse.redirect(new URL("/", req.url));
-  }
-
-  // Protect owner dashboard routes
-  if (isOwnerRoute(req)) {
-    if (role !== "restaurant_owner") {
-      return NextResponse.redirect(new URL("/unauthorized", req.url));
-    }
-  }
-
-  // Protect customer dashboard routes
-  if (isCustomerRoute(req)) {
-    if (role === "restaurant_owner") {
-      return NextResponse.redirect(new URL("/dashboard/owner", req.url));
-    }
   }
 
   return NextResponse.next();

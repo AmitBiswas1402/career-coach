@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { menuItemsTable, restaurantsTable, usersTable } from "@/db/schema";
+import {
+  categoriesTable,
+  menuItemsTable,
+  restaurantsTable,
+  usersTable,
+} from "@/db/schema";
+import { seedCategories } from "@/db/seed";
 
 async function getOwnerDbUser() {
   const { userId } = await auth();
@@ -22,8 +28,23 @@ async function getOwnerDbUser() {
     .where(eq(usersTable.email, email))
     .limit(1);
 
-  if (!dbUser || dbUser.role !== "restaurant_owner") {
+  const clerkRole = user.publicMetadata?.role as string | undefined;
+
+  if (clerkRole !== "restaurant_owner") {
     throw new Error("Only owners can perform this action");
+  }
+
+  if (!dbUser) {
+    throw new Error("Owner account not found");
+  }
+
+  if (dbUser.role !== "restaurant_owner") {
+    await db
+      .update(usersTable)
+      .set({ role: "restaurant_owner" })
+      .where(eq(usersTable.id, dbUser.id));
+
+    return { ...dbUser, role: "restaurant_owner" };
   }
 
   return dbUser;
@@ -31,6 +52,13 @@ async function getOwnerDbUser() {
 
 export async function getOwnerDashboardData() {
   const owner = await getOwnerDbUser();
+  // Seed categories if needed
+  await seedCategories();
+
+  const categories = await db
+    .select({ id: categoriesTable.id, name: categoriesTable.name })
+    .from(categoriesTable);
+
 
   const ownerRestaurants = await db
     .select()
@@ -40,6 +68,7 @@ export async function getOwnerDashboardData() {
   if (ownerRestaurants.length === 0) {
     return {
       owner,
+      categories,
       restaurants: [],
       menuItemsByRestaurant: {} as Record<number, typeof menuItemsTable.$inferSelect[]>,
     };
@@ -61,6 +90,7 @@ export async function getOwnerDashboardData() {
 
   return {
     owner,
+    categories,
     restaurants: ownerRestaurants,
     menuItemsByRestaurant,
   };
@@ -83,7 +113,7 @@ export async function createRestaurantAction(formData: FormData) {
     ownerId: owner.id,
   });
 
-  revalidatePath("/dashboard/owner");
+  revalidatePath("/owner-dashboard");
 }
 
 export async function addMenuItemAction(formData: FormData) {
@@ -92,6 +122,9 @@ export async function addMenuItemAction(formData: FormData) {
   const restaurantId = Number(formData.get("restaurantId"));
   const name = String(formData.get("name") ?? "").trim();
   const price = Number(formData.get("price"));
+  const description = String(formData.get("description") ?? "").trim();
+  const categoryId = Number(formData.get("categoryId")) || null;
+  const isVeg = String(formData.get("isVeg")) === "true";
 
   if (!restaurantId || !name || !Number.isFinite(price) || price <= 0) {
     throw new Error("Invalid item details");
@@ -101,9 +134,12 @@ export async function addMenuItemAction(formData: FormData) {
     restaurantId,
     name,
     price,
+    description: description || null,
+    categoryId,
+    isVeg,
   });
 
-  revalidatePath("/dashboard/owner");
+  revalidatePath("/owner-dashboard");
 }
 
 export async function updateMenuItemAction(formData: FormData) {
@@ -112,6 +148,9 @@ export async function updateMenuItemAction(formData: FormData) {
   const itemId = Number(formData.get("itemId"));
   const name = String(formData.get("name") ?? "").trim();
   const price = Number(formData.get("price"));
+  const description = String(formData.get("description") ?? "").trim();
+  const categoryId = Number(formData.get("categoryId")) || null;
+  const isVeg = String(formData.get("isVeg")) === "true";
 
   if (!itemId || !name || !Number.isFinite(price) || price <= 0) {
     throw new Error("Invalid item details");
@@ -139,10 +178,16 @@ export async function updateMenuItemAction(formData: FormData) {
 
   await db
     .update(menuItemsTable)
-    .set({ name, price })
+    .set({ 
+      name, 
+      price,
+      description: description || null,
+      categoryId,
+      isVeg,
+    })
     .where(eq(menuItemsTable.id, itemId));
 
-  revalidatePath("/dashboard/owner");
+  revalidatePath("/owner-dashboard");
 }
 
 export async function deleteMenuItemAction(formData: FormData) {
@@ -176,5 +221,5 @@ export async function deleteMenuItemAction(formData: FormData) {
 
   await db.delete(menuItemsTable).where(eq(menuItemsTable.id, itemId));
 
-  revalidatePath("/dashboard/owner");
+  revalidatePath("/owner-dashboard");
 }
