@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { v2 as cloudinary } from "cloudinary";
 
-const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
+
+cloudinary.config({
+  cloud_name: CLOUDINARY_CLOUD_NAME,
+  api_key: CLOUDINARY_API_KEY,
+  api_secret: CLOUDINARY_API_SECRET,
+  secure: true,
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,31 +28,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
       return NextResponse.json(
         { error: "Cloudinary config missing" },
         { status: 500 }
       );
     }
 
-    const cloudinaryFormData = new FormData();
-    cloudinaryFormData.append("file", file);
-    cloudinaryFormData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const data = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: "food-delivery",
+        },
+        (error, result) => {
+          if (error || !result) {
+            reject(error ?? new Error("Upload failed"));
+            return;
+          }
 
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-      {
-        method: "POST",
-        body: cloudinaryFormData,
-      }
-    );
+          resolve({
+            secure_url: result.secure_url,
+            public_id: result.public_id,
+          });
+        }
+      );
 
-    if (!response.ok) {
-      const error = await response.json();
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    const data = await response.json();
+      uploadStream.end(buffer);
+    });
 
     return NextResponse.json({
       url: data.secure_url,

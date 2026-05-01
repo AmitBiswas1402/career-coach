@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/db";
 import { menuItemsTable, restaurantsTable, usersTable } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 
 async function getOwnerContext() {
   const { userId } = await auth();
@@ -232,6 +232,67 @@ export async function DELETE(req: NextRequest) {
     console.error("Delete menu item error:", error);
     return NextResponse.json(
       { error: "Failed to delete menu item" },
+      { status: 500 }
+    );
+  }
+}
+
+// GET: Fetch menu items for a specific restaurant or all restaurants owned by the user
+export async function GET(req: NextRequest) {
+  try {
+    const context = await getOwnerContext();
+
+    if ("error" in context) return context.error;
+
+    const { dbUser } = context;
+    const url = new URL(req.url);
+    const restaurantId = url.searchParams.get("restaurantId");
+
+    if (restaurantId) {
+      const parsedRestaurantId = Number(restaurantId);
+
+      if (!Number.isFinite(parsedRestaurantId)) {
+        return NextResponse.json({ error: "Invalid restaurantId" }, { status: 400 });
+      }
+
+      const [restaurant] = await db
+        .select({ id: restaurantsTable.id })
+        .from(restaurantsTable)
+        .where(and(eq(restaurantsTable.id, parsedRestaurantId), eq(restaurantsTable.ownerId, dbUser.id)))
+        .limit(1);
+
+      if (!restaurant) {
+        return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
+      }
+
+      const items = await db
+        .select()
+        .from(menuItemsTable)
+        .where(eq(menuItemsTable.restaurantId, parsedRestaurantId));
+
+      return NextResponse.json(items);
+    }
+
+    const restaurants = await db
+      .select({ id: restaurantsTable.id })
+      .from(restaurantsTable)
+      .where(eq(restaurantsTable.ownerId, dbUser.id));
+
+    if (restaurants.length === 0) {
+      return NextResponse.json([]);
+    }
+
+    const restaurantIds = restaurants.map((restaurant) => restaurant.id);
+    const items = await db
+      .select()
+      .from(menuItemsTable)
+      .where(inArray(menuItemsTable.restaurantId, restaurantIds));
+
+    return NextResponse.json(items);
+  } catch (error) {
+    console.error("Get menu items error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch menu items" },
       { status: 500 }
     );
   }

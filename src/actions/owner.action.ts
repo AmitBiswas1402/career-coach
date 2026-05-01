@@ -14,9 +14,14 @@ import { seedCategories } from "@/db/seed";
 
 async function getOwnerDbUser() {
   const { userId } = await auth();
+
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
   const user = await currentUser();
 
-  if (!userId || !user) {
+  if (!user) {
     throw new Error("Unauthorized");
   }
 
@@ -59,13 +64,24 @@ export async function getOwnerDashboardData() {
     .select({ id: categoriesTable.id, name: categoriesTable.name })
     .from(categoriesTable);
 
+  let ownerRestaurants: Array<typeof restaurantsTable.$inferSelect> = [];
+  let items: typeof menuItemsTable.$inferSelect[] = [];
 
-  const ownerRestaurants = await db
-    .select()
-    .from(restaurantsTable)
-    .where(eq(restaurantsTable.ownerId, owner.id));
+  try {
+    ownerRestaurants = await db
+      .select()
+      .from(restaurantsTable)
+      .where(eq(restaurantsTable.ownerId, owner.id));
 
-  if (ownerRestaurants.length === 0) {
+    if (ownerRestaurants.length > 0) {
+      const restaurantIds = ownerRestaurants.map((r) => r.id);
+      items = await db
+        .select()
+        .from(menuItemsTable)
+        .where(inArray(menuItemsTable.restaurantId, restaurantIds));
+    }
+  } catch (error) {
+    console.error("Owner dashboard query failed:", error);
     return {
       owner,
       categories,
@@ -73,12 +89,6 @@ export async function getOwnerDashboardData() {
       menuItemsByRestaurant: {} as Record<number, typeof menuItemsTable.$inferSelect[]>,
     };
   }
-
-  const restaurantIds = ownerRestaurants.map((r) => r.id);
-  const items = await db
-    .select()
-    .from(menuItemsTable)
-    .where(inArray(menuItemsTable.restaurantId, restaurantIds));
 
   const menuItemsByRestaurant = items.reduce<Record<number, typeof items>>((acc, item) => {
     if (!acc[item.restaurantId]) {
@@ -222,4 +232,23 @@ export async function deleteMenuItemAction(formData: FormData) {
   await db.delete(menuItemsTable).where(eq(menuItemsTable.id, itemId));
 
   revalidatePath("/owner-dashboard");
+}
+
+export async function getRestaurantMenuItems(restaurantId: number) {
+  const owner = await getOwnerDbUser();
+
+  const [restaurant] = await db
+    .select({ id: restaurantsTable.id })
+    .from(restaurantsTable)
+    .where(and(eq(restaurantsTable.id, restaurantId), eq(restaurantsTable.ownerId, owner.id)))
+    .limit(1);
+
+  if (!restaurant) {
+    throw new Error("You cannot view this restaurant");
+  }
+
+  return await db
+    .select()
+    .from(menuItemsTable)
+    .where(eq(menuItemsTable.restaurantId, restaurantId));
 }

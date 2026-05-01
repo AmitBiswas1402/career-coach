@@ -26,7 +26,11 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  await syncUser();
+  try {
+    await syncUser();
+  } catch (error) {
+    console.error("User sync skipped:", error);
+  }
 
   return (
     <html
@@ -43,7 +47,6 @@ export default async function RootLayout({
             attribute="class"
             defaultTheme="system"
             enableSystem
-            disableTransitionOnChange
           >
             <Navbar />
             {children}
