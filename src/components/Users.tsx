@@ -16,10 +16,10 @@ const Users = () => {
         <>
           {role === "restaurant_owner" ? (
             <Link
-              href="/dashboard/owner"
+              href="/owner-dashboard"
               className="rounded-full border border-orange-400/30 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500/10 hover:text-orange-300"
             >
-              Dashboard
+              Admin Dashboard
             </Link>
           ) : null}
           <UserButton />

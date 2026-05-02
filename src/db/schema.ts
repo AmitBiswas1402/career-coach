@@ -6,6 +6,7 @@ import {
   timestamp,
   pgEnum,
   primaryKey,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 import { relations } from "drizzle-orm";
@@ -64,6 +65,8 @@ export const restaurantsTable = pgTable("restaurants", {
 
   name: varchar("name", { length: 255 }).notNull(),
 
+  address: varchar("address", { length: 500 }),
+
   image: varchar("image", { length: 500 }),
 
   type: restaurantTypeEnum("type").notNull(),
@@ -116,6 +119,16 @@ export const menuItemsTable = pgTable("menu_items", {
   name: varchar("name", { length: 255 }).notNull(),
 
   price: integer("price").notNull(),
+
+  image: varchar("image", { length: 500 }),
+
+  description: varchar("description", { length: 1000 }),
+
+  categoryId: integer("category_id").references(() => categoriesTable.id, {
+    onDelete: "set null",
+  }),
+
+  isVeg: boolean("is_veg").default(true),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
