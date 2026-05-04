@@ -12,7 +12,6 @@ import {
   Upload,
   Store,
   UtensilsCrossed,
-  ChefHat,
   Check,
   X,
 } from "lucide-react";
@@ -31,7 +30,7 @@ const restaurantTypes = [
 
 export default function OwnerDashboardPage({ initialData }: { initialData: DashboardData }) {
   const router = useRouter();
-  const { owner, categories, restaurants, menuItemsByRestaurant } = initialData;
+  const { categories, restaurants, menuItemsByRestaurant } = initialData;
 
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<number | null>(
     restaurants[0]?.id ?? null
@@ -211,27 +210,6 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
         style={{ backgroundImage: "radial-gradient(circle, #f97316 1px, transparent 1px)", backgroundSize: "28px 28px" }}
       />
 
-      {/* Sticky topbar */}
-      <header className="sticky top-0 z-50 border-b border-orange-100/80 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-linear-to-br from-orange-500 to-amber-500 shadow-md shadow-orange-200">
-              <ChefHat className="h-4 w-4 text-white" />
-            </div>
-            <span className="text-[15px] font-black tracking-tight text-slate-900">
-              Gourmet<span className="text-orange-500">Go</span>
-            </span>
-            <span className="hidden rounded-full border border-orange-200 bg-orange-50 px-3 py-0.5 text-[11px] font-bold uppercase tracking-widest text-orange-600 sm:inline-flex">
-              Owner Dashboard
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-linear-to-br from-orange-400 to-amber-400 shadow-sm" />
-            <span className="hidden text-sm font-semibold text-slate-700 sm:inline">{owner.name}</span>
-          </div>
-        </div>
-      </header>
-
       {/* Toast notification */}
       {notice && (
         <div
@@ -247,14 +225,6 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
       )}
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Page heading */}
-        <div className="mb-8">
-          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-orange-500">Management console</p>
-          <h1 className="mt-1.5 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-            Restaurant management
-          </h1>
-          <p className="mt-2 text-slate-500">Manage your locations, menus, and listings.</p>
-        </div>
 
         {!hasRestaurants ? (
           /* ── Empty state: no restaurants yet ── */
