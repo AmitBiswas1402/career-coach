@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/db";
-import { restaurantsTable, usersTable } from "@/db/schema";
+import { restaurantsTable, usersTable, restaurantCategoriesTable } from "@/db/schema";
 import { eq } from "drizzle-orm";
+
+const restaurantSelectFields = {
+  id: restaurantsTable.id,
+  name: restaurantsTable.name,
+  address: restaurantsTable.address,
+  image: restaurantsTable.image,
+  type: restaurantsTable.type,
+  rating: restaurantsTable.rating,
+  published: restaurantsTable.published,
+  ownerId: restaurantsTable.ownerId,
+};
 
 async function getOwnerContext() {
   const { userId } = await auth();
@@ -47,28 +58,95 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, address, type, image } = await req.json();
+    const body = await req.json();
+    const name = String(body.name ?? "").trim();
+    const address = body.address ? String(body.address).trim() : null;
+    const type = String(body.type ?? "both") as "veg" | "non-veg" | "both";
+    const image = body.image ? String(body.image) : null;
+    const rating = body.rating ? String(body.rating) : "4.5";
+    const categories = Array.isArray(body.categories) ? body.categories.map((c: any) => Number(c)) : [];
 
     if (!name || !type) {
-      return NextResponse.json(
-        { error: "Name and type are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Name and type are required" }, { status: 400 });
     }
 
-    const [restaurant] = await db
-      .insert(restaurantsTable)
-      .values({
-        name,
-        address: address || null,
-        type: type as "veg" | "non-veg" | "both",
-        image: image || null,
-        rating: "4.5",
-        ownerId: dbUser.id,
-      })
-      .returning();
+    // Insert restaurant (attempt full insert first)
+    try {
+      const [restaurant] = await db
+        .insert(restaurantsTable)
+        .values({
+          name,
+          address: address || null,
+          type: type as "veg" | "non-veg" | "both",
+          image: image || null,
+          rating: rating,
+          ownerId: Number(dbUser.id),
+          published: true,
+        })
+        .returning(restaurantSelectFields);
 
-    return NextResponse.json(restaurant, { status: 201 });
+      // If categories provided, link them
+      if (restaurant && categories.length > 0) {
+        const values = categories
+          .filter((c: any) => Number.isFinite(c))
+          .map((catId: any) => ({ restaurantId: restaurant.id, categoryId: Number(catId) }));
+
+        if (values.length > 0) {
+          try {
+            await db.insert(restaurantCategoriesTable).values(values as any[]);
+          } catch (catErr) {
+            console.error("Failed to insert restaurant categories:", catErr);
+            // continue; categories are optional
+          }
+        }
+      }
+
+      return NextResponse.json(restaurant, { status: 201 });
+    } catch (err: any) {
+      console.error("Create restaurant error (full insert):", err);
+      // If column missing in DB (migration not applied), fall back to minimal insert
+      const message = String(err?.message || "").toLowerCase();
+      if (err?.code === "42703" || message.includes("does not exist") || message.includes("column")) {
+        try {
+          const [row] = await db
+            .insert(restaurantsTable)
+            .values({ name, type: type as "veg" | "non-veg" | "both", rating: rating, ownerId: Number(dbUser.id) })
+            .returning({ id: restaurantsTable.id });
+
+          const insertedId = row?.id;
+
+          // Try to insert categories if possible
+          if (insertedId && categories.length > 0) {
+            try {
+              const values = categories
+                .filter((c: any) => Number.isFinite(c))
+                .map((catId: any) => ({ restaurantId: insertedId, categoryId: Number(catId) }));
+              if (values.length > 0) await db.insert(restaurantCategoriesTable).values(values as any[]);
+            } catch (catErr) {
+              console.error("Failed to link categories on fallback insert:", catErr);
+            }
+          }
+
+          const fallbackResp = {
+            id: insertedId,
+            name,
+            address: address || null,
+            image: image || null,
+            type,
+            rating,
+            published: true,
+            ownerId: Number(dbUser.id),
+          };
+
+          return NextResponse.json(fallbackResp, { status: 201 });
+        } catch (fallbackErr) {
+          console.error("Fallback insert failed:", fallbackErr);
+          return NextResponse.json({ error: "Failed to create restaurant (fallback)" }, { status: 500 });
+        }
+      }
+
+      return NextResponse.json({ error: "Failed to create restaurant" }, { status: 500 });
+    }
   } catch (error) {
     console.error("Create restaurant error:", error);
     return NextResponse.json(
@@ -101,7 +179,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const [restaurant] = await db
-      .select()
+      .select(restaurantSelectFields)
       .from(restaurantsTable)
       .where(eq(restaurantsTable.id, id))
       .limit(1);
@@ -126,7 +204,7 @@ export async function PUT(req: NextRequest) {
         ...(image && { image }),
       })
       .where(eq(restaurantsTable.id, id))
-      .returning();
+      .returning(restaurantSelectFields);
 
     return NextResponse.json(updated);
   } catch (error) {
@@ -153,7 +231,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const [restaurant] = await db
-      .select()
+      .select(restaurantSelectFields)
       .from(restaurantsTable)
       .where(eq(restaurantsTable.id, id))
       .limit(1);
@@ -189,9 +267,9 @@ export async function GET(req: NextRequest) {
     }
 
     const restaurants = await db
-      .select()
+      .select(restaurantSelectFields)
       .from(restaurantsTable)
-      .where(eq(restaurantsTable.ownerId, dbUser.id));
+      .where(eq(restaurantsTable.ownerId, Number(dbUser.id)));
 
     return NextResponse.json(restaurants);
   } catch (error) {

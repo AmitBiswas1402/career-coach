@@ -37,6 +37,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
   );
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ type: string | null; percent: number }>({ type: null, percent: 0 });
 
   const [restaurantDraft, setRestaurantDraft] = useState({ name: "", address: "", type: "both", image: "" });
   const [restaurantEdit, setRestaurantEdit] = useState({ name: "", address: "", type: "both", image: "" });
@@ -65,13 +66,44 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     setMenuItemDrafts(drafts);
   }, [restaurantItems, selectedRestaurantId]);
 
-  const uploadImage = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const response = await fetch("/api/upload", { method: "POST", body: formData });
-    if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.error || "Upload failed"); }
-    const data = await response.json();
-    return data.url as string;
+  const uploadImage = (file: File, type = "generic") => {
+    return new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const fd = new FormData();
+      fd.append("file", file);
+
+      xhr.open("POST", "/api/upload");
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const p = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress({ type, percent: p });
+        }
+      };
+
+      xhr.onload = () => {
+        setUploadProgress({ type: null, percent: 0 });
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data.url);
+          } catch (err) {
+            reject(new Error("Invalid upload response"));
+          }
+        } else {
+          let errMsg = "Upload failed";
+          try { const d = JSON.parse(xhr.responseText); errMsg = d.error || errMsg; } catch {}
+          reject(new Error(errMsg));
+        }
+      };
+
+      xhr.onerror = () => {
+        setUploadProgress({ type: null, percent: 0 });
+        reject(new Error("Network error during upload"));
+      };
+
+      xhr.send(fd);
+    });
   };
 
   const showNotice = (type: "success" | "error", text: string) => {
@@ -83,7 +115,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     setRestaurantFilePreview(URL.createObjectURL(file));
     setBusyAction("upload-restaurant-image");
     try {
-      const url = await uploadImage(file);
+      const url = await uploadImage(file, "restaurant");
       setRestaurantDraft((c) => ({ ...c, image: url }));
       setSelectedRestaurantImage(url);
       showNotice("success", "Restaurant image uploaded.");
@@ -96,7 +128,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     setMenuFilePreview(URL.createObjectURL(file));
     setBusyAction("upload-menu-image");
     try {
-      const url = await uploadImage(file);
+      const url = await uploadImage(file, "menu");
       setMenuForm((c) => ({ ...c, image: url }));
       showNotice("success", "Menu image uploaded.");
     } catch (error) {
@@ -178,7 +210,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
   const handleMenuItemImagePick = async (itemId: number, file: File) => {
     setBusyAction(`upload-item-${itemId}`);
     try {
-      const url = await uploadImage(file);
+      const url = await uploadImage(file, `item-${itemId}`);
       setMenuItemDrafts((c) => ({ ...c, [itemId]: { ...(c[itemId] || { name: "", price: "", description: "", categoryId: "", isVeg: true, image: "" }), image: url } }));
       showNotice("success", "Image uploaded.");
     } catch (error) {
@@ -291,9 +323,14 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                     <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">Restaurant photo</label>
                     <label className="flex h-12 cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-orange-300 bg-orange-50/60 px-4 text-sm font-medium text-orange-600 transition hover:bg-orange-50">
                       <Upload className="h-4 w-4" />
-                      {busyAction === "upload-restaurant-image" ? "Uploading..." : "Upload a photo"}
+                      {busyAction === "upload-restaurant-image" ? `Uploading... ${uploadProgress.type === "restaurant" ? `${uploadProgress.percent}%` : ""}` : "Upload a photo"}
                       <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleRestaurantImagePick(f); }} />
                     </label>
+                    {uploadProgress.type === "restaurant" && (
+                      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-orange-50">
+                        <div className="h-2 bg-orange-400 transition-all" style={{ width: `${uploadProgress.percent}%` }} />
+                      </div>
+                    )}
                     {restaurantFilePreview && (
                       <div className="mt-3 overflow-hidden rounded-2xl border border-orange-100">
                         <Image src={restaurantFilePreview} alt="Preview" width={800} height={300} className="h-44 w-full object-cover" />
@@ -315,7 +352,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                       disabled={busyAction !== null || !restaurantDraft.name.trim()}
                       className="rounded-2xl bg-linear-to-r from-orange-500 to-amber-500 px-6 py-3 text-sm font-bold text-white shadow-md shadow-orange-200 transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {busyAction === "create-restaurant" ? "Creating…" : "Publish restaurant"}
+                      {busyAction === "create-restaurant" ? "Creating…" : uploadProgress.type === "restaurant" ? `Uploading ${uploadProgress.percent}%` : "Publish restaurant"}
                     </button>
                   </div>
                 </div>
@@ -381,7 +418,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                     disabled={!restaurantDraft.name.trim() || busyAction !== null}
                     className="w-full rounded-2xl bg-linear-to-r from-orange-500 to-amber-500 py-3 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {busyAction === "create-restaurant" ? "Creating…" : "Create restaurant"}
+                    {busyAction === "create-restaurant" ? "Creating…" : uploadProgress.type === "restaurant" ? `Uploading ${uploadProgress.percent}%` : "Create restaurant"}
                   </button>
                 </div>
               </div>
@@ -469,12 +506,17 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                         <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">Photo</label>
                         <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-orange-300 bg-orange-50/60 px-4 py-2.5 text-sm font-medium text-orange-600 transition hover:bg-orange-50">
                           <Upload className="h-4 w-4" />
-                          {busyAction === "upload-restaurant-image" ? "Uploading…" : "Replace photo"}
+                          {busyAction === "upload-restaurant-image" ? `Uploading… ${uploadProgress.type === "restaurant" ? `${uploadProgress.percent}%` : ""}` : "Replace photo"}
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleRestaurantImagePick(f); }} />
                         </label>
                         {(selectedRestaurantImage || selectedRestaurant.image) && (
                           <div className="mt-3 overflow-hidden rounded-2xl border border-orange-100">
                             <Image src={selectedRestaurantImage || selectedRestaurant.image!} alt="Restaurant" width={800} height={280} className="h-40 w-full object-cover" />
+                          </div>
+                        )}
+                        {uploadProgress.type === "restaurant" && (
+                          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-orange-50">
+                            <div className="h-2 bg-orange-400 transition-all" style={{ width: `${uploadProgress.percent}%` }} />
                           </div>
                         )}
                       </div>
@@ -552,9 +594,14 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                           </button>
                           <label className="flex h-11 cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-orange-300 bg-orange-50/60 px-4 text-sm font-medium text-orange-600 transition hover:bg-orange-50">
                             <Upload className="h-4 w-4" />
-                            {busyAction === "upload-menu-image" ? "Uploading…" : "Photo"}
+                            {busyAction === "upload-menu-image" ? `Uploading… ${uploadProgress.type === "menu" ? `${uploadProgress.percent}%` : ""}` : "Photo"}
                             <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleMenuImagePick(f); }} />
                           </label>
+                          {uploadProgress.type === "menu" && (
+                            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-orange-50">
+                              <div className="h-2 bg-orange-400 transition-all" style={{ width: `${uploadProgress.percent}%` }} />
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -620,6 +667,11 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                                     <Upload className="h-4 w-4" />
                                     <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleMenuItemImagePick(item.id, f); }} />
                                   </label>
+                                  {uploadProgress.type === `item-${item.id}` && (
+                                    <div className="ml-2 mt-1 h-2 w-20 overflow-hidden rounded-full bg-orange-50">
+                                      <div className="h-2 bg-orange-400 transition-all" style={{ width: `${uploadProgress.percent}%` }} />
+                                    </div>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => updateMenuItemDraft(item)}

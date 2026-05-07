@@ -4,6 +4,22 @@ import { db } from "@/db";
 import { menuItemsTable, restaurantsTable, usersTable } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
+const menuItemSelectFields = {
+  id: menuItemsTable.id,
+  restaurantId: menuItemsTable.restaurantId,
+  name: menuItemsTable.name,
+  price: menuItemsTable.price,
+  image: menuItemsTable.image,
+  description: menuItemsTable.description,
+  categoryId: menuItemsTable.categoryId,
+  isVeg: menuItemsTable.isVeg,
+};
+
+const restaurantSelectFields = {
+  id: restaurantsTable.id,
+  ownerId: restaurantsTable.ownerId,
+};
+
 async function getOwnerContext() {
   const { userId } = await auth();
 
@@ -59,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     // Verify ownership
     const [restaurant] = await db
-      .select()
+      .select(restaurantSelectFields)
       .from(restaurantsTable)
       .where(
         and(
@@ -87,7 +103,7 @@ export async function POST(req: NextRequest) {
         categoryId: categoryId || null,
         isVeg: isVeg ?? true,
       })
-      .returning();
+      .returning(menuItemSelectFields);
 
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
@@ -124,7 +140,7 @@ export async function PUT(req: NextRequest) {
 
     // Verify ownership
     const [item] = await db
-      .select()
+      .select(menuItemSelectFields)
       .from(menuItemsTable)
       .where(eq(menuItemsTable.id, id))
       .limit(1);
@@ -134,7 +150,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const [restaurant] = await db
-      .select()
+      .select(restaurantSelectFields)
       .from(restaurantsTable)
       .where(
         and(
@@ -162,7 +178,7 @@ export async function PUT(req: NextRequest) {
         ...(image && { image }),
       })
       .where(eq(menuItemsTable.id, id))
-      .returning();
+      .returning(menuItemSelectFields);
 
     return NextResponse.json(updated);
   } catch (error) {
@@ -198,7 +214,7 @@ export async function DELETE(req: NextRequest) {
 
     // Verify ownership
     const [item] = await db
-      .select()
+      .select(menuItemSelectFields)
       .from(menuItemsTable)
       .where(eq(menuItemsTable.id, id))
       .limit(1);
@@ -208,7 +224,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const [restaurant] = await db
-      .select()
+      .select(restaurantSelectFields)
       .from(restaurantsTable)
       .where(
         and(
@@ -266,7 +282,7 @@ export async function GET(req: NextRequest) {
       }
 
       const items = await db
-        .select()
+        .select(menuItemSelectFields)
         .from(menuItemsTable)
         .where(eq(menuItemsTable.restaurantId, parsedRestaurantId));
 
@@ -274,7 +290,7 @@ export async function GET(req: NextRequest) {
     }
 
     const restaurants = await db
-      .select({ id: restaurantsTable.id })
+      .select(restaurantSelectFields)
       .from(restaurantsTable)
       .where(eq(restaurantsTable.ownerId, dbUser.id));
 
@@ -284,7 +300,7 @@ export async function GET(req: NextRequest) {
 
     const restaurantIds = restaurants.map((restaurant) => restaurant.id);
     const items = await db
-      .select()
+      .select(menuItemSelectFields)
       .from(menuItemsTable)
       .where(inArray(menuItemsTable.restaurantId, restaurantIds));
 
