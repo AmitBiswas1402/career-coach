@@ -73,12 +73,8 @@ export async function getOwnerDashboardData() {
       .select({
         id: restaurantsTable.id,
         name: restaurantsTable.name,
-        address: restaurantsTable.address,
-        image: restaurantsTable.image,
         type: restaurantsTable.type,
         rating: restaurantsTable.rating,
-        createdAt: restaurantsTable.createdAt,
-        published: restaurantsTable.published,
         ownerId: restaurantsTable.ownerId,
       })
       .from(restaurantsTable)
@@ -89,12 +85,9 @@ export async function getOwnerDashboardData() {
       items = await db
         .select({
           id: menuItemsTable.id,
-          createdAt: menuItemsTable.createdAt,
           restaurantId: menuItemsTable.restaurantId,
           name: menuItemsTable.name,
           price: menuItemsTable.price,
-          image: menuItemsTable.image,
-          description: menuItemsTable.description,
           categoryId: menuItemsTable.categoryId,
           isVeg: menuItemsTable.isVeg,
         })

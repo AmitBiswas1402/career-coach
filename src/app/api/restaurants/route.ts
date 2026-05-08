@@ -11,7 +11,6 @@ const restaurantSelectFields = {
   image: restaurantsTable.image,
   type: restaurantsTable.type,
   rating: restaurantsTable.rating,
-  published: restaurantsTable.published,
   ownerId: restaurantsTable.ownerId,
 };
 
@@ -81,7 +80,6 @@ export async function POST(req: NextRequest) {
           image: image || null,
           rating: rating,
           ownerId: Number(dbUser.id),
-          published: true,
         })
         .returning(restaurantSelectFields);
 
@@ -134,7 +132,6 @@ export async function POST(req: NextRequest) {
             image: image || null,
             type,
             rating,
-            published: true,
             ownerId: Number(dbUser.id),
           };
 
