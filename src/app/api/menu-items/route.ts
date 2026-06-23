@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/db";
-import { menuItemsTable, restaurantsTable, usersTable } from "@/db/schema";
+import { categoriesTable, menuItemsTable, restaurantsTable, usersTable } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
 const menuItemSelectFields = {
@@ -71,6 +71,12 @@ export async function POST(req: NextRequest) {
         { error: "Restaurant ID, name, and price are required" },
         { status: 400 }
       );
+    }
+    if (!categoryId) {
+      return NextResponse.json({ error: "Category is required" }, { status: 400 });
+    }
+    if (!image) {
+      return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
 
     // Verify ownership
@@ -172,7 +178,7 @@ export async function PUT(req: NextRequest) {
       .set({
         ...(name && { name }),
         ...(price && { price: Math.round(price * 100) }),
-        ...(description && { description }),
+        ...(description !== undefined && { description: description || null }),
         ...(categoryId && { categoryId }),
         ...(isVeg !== undefined && { isVeg }),
         ...(image && { image }),
@@ -256,13 +262,62 @@ export async function DELETE(req: NextRequest) {
 // GET: Fetch menu items for a specific restaurant or all restaurants owned by the user
 export async function GET(req: NextRequest) {
   try {
+    const url = new URL(req.url);
+    const restaurantId = url.searchParams.get("restaurantId");
+    const isPublicRequest = url.searchParams.get("public") === "1";
+
+    if (isPublicRequest) {
+      const parsedRestaurantId = restaurantId ? Number(restaurantId) : null;
+      if (restaurantId && !Number.isFinite(parsedRestaurantId)) {
+        return NextResponse.json({ error: "Invalid restaurantId" }, { status: 400 });
+      }
+
+      const menuRows = await db
+        .select({
+          id: menuItemsTable.id,
+          restaurantId: menuItemsTable.restaurantId,
+          restaurantName: restaurantsTable.name,
+          name: menuItemsTable.name,
+          price: menuItemsTable.price,
+          image: menuItemsTable.image,
+          description: menuItemsTable.description,
+          categoryId: menuItemsTable.categoryId,
+          categoryName: categoriesTable.name,
+          isVeg: menuItemsTable.isVeg,
+        })
+        .from(menuItemsTable)
+        .innerJoin(restaurantsTable, eq(restaurantsTable.id, menuItemsTable.restaurantId))
+        .leftJoin(categoriesTable, eq(categoriesTable.id, menuItemsTable.categoryId))
+        .where(
+          restaurantId
+            ? and(
+                eq(restaurantsTable.published, true),
+                eq(menuItemsTable.restaurantId, Number(parsedRestaurantId))
+              )
+            : eq(restaurantsTable.published, true)
+        );
+
+      const items = menuRows.map((row) => ({
+        id: row.id,
+        restaurantId: row.restaurantId,
+        restaurantName: row.restaurantName,
+        name: row.name,
+        price: Number(row.price) / 100,
+        image: row.image,
+        description: row.description,
+        categoryId: row.categoryId,
+        categoryName: row.categoryName,
+        isVeg: row.isVeg ?? true,
+      }));
+
+      return NextResponse.json(items);
+    }
+
     const context = await getOwnerContext();
 
     if ("error" in context) return context.error;
 
     const { dbUser } = context;
-    const url = new URL(req.url);
-    const restaurantId = url.searchParams.get("restaurantId");
 
     if (restaurantId) {
       const parsedRestaurantId = Number(restaurantId);

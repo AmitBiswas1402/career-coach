@@ -58,66 +58,134 @@ async function getOwnerDbUser() {
 
 export async function getOwnerDashboardData() {
   const owner = await getOwnerDbUser();
-  // Seed categories if needed
   await seedCategories();
 
   const categories = await db
     .select({ id: categoriesTable.id, name: categoriesTable.name })
     .from(categoriesTable);
 
-  let ownerRestaurants: Array<typeof restaurantsTable.$inferSelect> = [];
-  let items: typeof menuItemsTable.$inferSelect[] = [];
-
   try {
-    ownerRestaurants = await db
+    const restaurantRows = await db
       .select({
         id: restaurantsTable.id,
         name: restaurantsTable.name,
+        address: restaurantsTable.address,
+        image: restaurantsTable.image,
         type: restaurantsTable.type,
         rating: restaurantsTable.rating,
+        published: restaurantsTable.published,
         ownerId: restaurantsTable.ownerId,
       })
       .from(restaurantsTable)
       .where(eq(restaurantsTable.ownerId, Number(owner.id)));
 
-    if (ownerRestaurants.length > 0) {
-      const restaurantIds = ownerRestaurants.map((r) => r.id);
-      items = await db
+    const restaurantIds = restaurantRows.map((r) => r.id);
+
+    const categoriesByRestaurant: Record<number, { id: number; name: string }[]> = {};
+    if (restaurantIds.length > 0) {
+      const categoryRows = await db
+        .select({
+          restaurantId: restaurantCategoriesTable.restaurantId,
+          categoryId: categoriesTable.id,
+          categoryName: categoriesTable.name,
+        })
+        .from(restaurantCategoriesTable)
+        .innerJoin(categoriesTable, eq(categoriesTable.id, restaurantCategoriesTable.categoryId))
+        .where(inArray(restaurantCategoriesTable.restaurantId, restaurantIds));
+
+      for (const row of categoryRows) {
+        if (!categoriesByRestaurant[row.restaurantId]) {
+          categoriesByRestaurant[row.restaurantId] = [];
+        }
+        categoriesByRestaurant[row.restaurantId].push({ id: row.categoryId, name: row.categoryName });
+      }
+    }
+
+    const ownerRestaurants = restaurantRows.map((r) => ({
+      ...r,
+      categories: categoriesByRestaurant[r.id] ?? [],
+    }));
+
+    type DashboardMenuItem = {
+      id: number;
+      restaurantId: number;
+      name: string;
+      price: number;
+      image: string | null;
+      description: string | null;
+      categoryId: number | null;
+      categoryName: string | null;
+      isVeg: boolean | null;
+    };
+
+    let items: DashboardMenuItem[] = [];
+
+    if (restaurantIds.length > 0) {
+      const menuRows = await db
         .select({
           id: menuItemsTable.id,
           restaurantId: menuItemsTable.restaurantId,
           name: menuItemsTable.name,
           price: menuItemsTable.price,
+          image: menuItemsTable.image,
+          description: menuItemsTable.description,
           categoryId: menuItemsTable.categoryId,
+          categoryName: categoriesTable.name,
           isVeg: menuItemsTable.isVeg,
         })
         .from(menuItemsTable)
+        .leftJoin(categoriesTable, eq(categoriesTable.id, menuItemsTable.categoryId))
         .where(inArray(menuItemsTable.restaurantId, restaurantIds));
+
+      items = menuRows.map((row) => ({
+        id: row.id,
+        restaurantId: row.restaurantId,
+        name: row.name,
+        price: Number(row.price) / 100,
+        image: row.image,
+        description: row.description,
+        categoryId: row.categoryId,
+        categoryName: row.categoryName,
+        isVeg: row.isVeg,
+      }));
     }
+
+    const menuItemsByRestaurant = items.reduce<Record<number, DashboardMenuItem[]>>((acc, item) => {
+      if (!acc[item.restaurantId]) {
+        acc[item.restaurantId] = [];
+      }
+      acc[item.restaurantId].push(item);
+      return acc;
+    }, {});
+
+    return {
+      owner,
+      categories,
+      restaurants: ownerRestaurants,
+      menuItemsByRestaurant,
+    };
   } catch (error) {
     console.error("Owner dashboard query failed:", error);
     return {
       owner,
       categories,
       restaurants: [],
-      menuItemsByRestaurant: {} as Record<number, typeof menuItemsTable.$inferSelect[]>,
+      menuItemsByRestaurant: {} as Record<
+        number,
+        {
+          id: number;
+          restaurantId: number;
+          name: string;
+          price: number;
+          image: string | null;
+          description: string | null;
+          categoryId: number | null;
+          categoryName: string | null;
+          isVeg: boolean | null;
+        }[]
+      >,
     };
   }
-
-  const menuItemsByRestaurant = items.reduce<Record<number, typeof items>>((acc, item) => {
-    if (!acc[item.restaurantId]) {
-      acc[item.restaurantId] = [];
-    }
-    acc[item.restaurantId].push(item);
-    return acc;
-  }, {});
-
-  return {
-    owner,
-    categories,
-    restaurants: ownerRestaurants,
-    menuItemsByRestaurant,
-  };
 }
 
 export async function createRestaurantAction(formData: FormData) {
