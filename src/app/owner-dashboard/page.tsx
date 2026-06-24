@@ -137,7 +137,7 @@ export default async function OwnerDashboardPage() {
 
             {/* Footer caption */}
             <p className="mt-8 text-center text-[13px] text-slate-400">
-              © {new Date().getFullYear()} GourmetGo · Owner Dashboard
+              © {new Date().getFullYear()} Food · Owner Dashboard
             </p>
           </div>
         </div>

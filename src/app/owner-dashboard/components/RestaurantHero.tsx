@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { PencilLine, Trash2, Upload } from "lucide-react";
+import { Globe, GlobeLock, PencilLine, Rocket, Trash2, Upload } from "lucide-react";
 import { restaurantTypes } from "../constants";
 
 type Restaurant = {
@@ -33,7 +33,10 @@ type Props = {
   selectedImage: string;
   onImagePick: (file: File) => void;
   onSave: () => void;
+  onPublish: () => void;
+  onUnpublish: () => void;
   onDelete: () => void;
+  menuItemCount: number;
   busyAction: string | null;
   uploadProgress: { type: string | null; percent: number };
   allCategories: Category[];
@@ -46,13 +49,19 @@ export function RestaurantHero({
   selectedImage,
   onImagePick,
   onSave,
+  onPublish,
+  onUnpublish,
   onDelete,
+  menuItemCount,
   busyAction,
   uploadProgress,
   allCategories,
 }: Props) {
   const heroImage = selectedImage || restaurantEdit.image || restaurant.image;
   const typeLabel = restaurantTypes.find((t) => t.value === restaurantEdit.type)?.label ?? restaurantEdit.type;
+  const isLive = restaurantEdit.published;
+  const isPublishing = busyAction === "publish-restaurant";
+  const isUnpublishing = busyAction === "unpublish-restaurant";
 
   return (
     <div className="overflow-hidden rounded-[1.75rem] border border-orange-100 bg-white shadow-sm">
@@ -63,6 +72,21 @@ export function RestaurantHero({
           <div className="h-full w-full bg-linear-to-br from-orange-100 via-orange-50 to-white" />
         )}
         <div className="absolute inset-0 bg-linear-to-t from-black/60 via-black/20 to-transparent" />
+
+        {!isLive && (
+          <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+            <button
+              type="button"
+              onClick={onPublish}
+              disabled={busyAction !== null}
+              className="flex items-center gap-2 rounded-2xl bg-linear-to-r from-green-500 to-emerald-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-green-900/30 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Rocket className="h-4 w-4" />
+              {isPublishing ? "Publishing…" : "Publish restaurant"}
+            </button>
+          </div>
+        )}
+
         <div className="absolute bottom-0 left-0 right-0 p-6">
           <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-200">Restaurant</p>
           <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">{restaurant.name}</h2>
@@ -73,11 +97,16 @@ export function RestaurantHero({
             </span>
             <span
               className={`rounded-lg px-3 py-1 font-medium backdrop-blur ${
-                restaurantEdit.published ? "bg-green-500/30 text-green-100" : "bg-amber-500/30 text-amber-100"
+                isLive ? "bg-green-500/30 text-green-100" : "bg-amber-500/30 text-amber-100"
               }`}
             >
-              {restaurantEdit.published ? "Live on GourmetGo" : "Draft — hidden from customers"}
+              {isLive ? "Live — visible to customers" : "Draft — hidden from customers"}
             </span>
+            {menuItemCount > 0 && (
+              <span className="rounded-lg bg-white/15 px-3 py-1 font-medium backdrop-blur">
+                {menuItemCount} menu item{menuItemCount === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -88,7 +117,28 @@ export function RestaurantHero({
             <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-500">Edit details</p>
             <p className="mt-1 text-sm text-slate-500">Update how your restaurant appears to customers.</p>
           </div>
-          <div className="flex gap-2.5">
+          <div className="flex flex-wrap gap-2.5">
+            {!isLive ? (
+              <button
+                type="button"
+                onClick={onPublish}
+                disabled={busyAction !== null}
+                className="flex items-center gap-2 rounded-2xl bg-linear-to-r from-green-500 to-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
+              >
+                <Rocket className="h-3.5 w-3.5" />
+                {isPublishing ? "Publishing…" : "Publish"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onUnpublish}
+                disabled={busyAction !== null}
+                className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
+              >
+                <GlobeLock className="h-3.5 w-3.5" />
+                {isUnpublishing ? "Hiding…" : "Unpublish"}
+              </button>
+            )}
             <button
               type="button"
               onClick={onSave}
@@ -109,6 +159,28 @@ export function RestaurantHero({
             </button>
           </div>
         </div>
+
+        {!isLive && (
+          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-amber-900">Ready to go live?</p>
+              <p className="mt-0.5 text-sm text-amber-800/80">
+                {menuItemCount > 0
+                  ? `Publishing will make your restaurant and ${menuItemCount} menu item${menuItemCount === 1 ? "" : "s"} visible to customers on search and ordering.`
+                  : "Add menu items below first, then publish when you're ready. You can still publish now and add food later."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onPublish}
+              disabled={busyAction !== null}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-green-500 to-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
+            >
+              <Globe className="h-4 w-4" />
+              {isPublishing ? "Publishing…" : "Publish now"}
+            </button>
+          </div>
+        )}
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <div>
@@ -152,17 +224,36 @@ export function RestaurantHero({
 
         <div className="mt-4">
           <label className="mb-2 block text-[13px] font-semibold text-slate-700">Visibility</label>
-          <button
-            type="button"
-            onClick={() => onEditChange({ ...restaurantEdit, published: !restaurantEdit.published })}
-            className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold transition ${
-              restaurantEdit.published
-                ? "border-green-300 bg-green-50 text-green-700"
-                : "border-amber-300 bg-amber-50 text-amber-700"
-            }`}
-          >
-            {restaurantEdit.published ? "Published — visible to customers" : "Unpublished — hidden from search"}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold ${
+                isLive ? "border-green-300 bg-green-50 text-green-700" : "border-amber-300 bg-amber-50 text-amber-700"
+              }`}
+            >
+              {isLive ? "Published — visible to customers" : "Draft — hidden from search"}
+            </span>
+            {!isLive ? (
+              <button
+                type="button"
+                onClick={onPublish}
+                disabled={busyAction !== null}
+                className="inline-flex items-center gap-2 rounded-2xl bg-linear-to-r from-green-500 to-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
+              >
+                <Rocket className="h-3.5 w-3.5" />
+                {isPublishing ? "Publishing…" : "Make live"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onUnpublish}
+                disabled={busyAction !== null}
+                className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-white px-4 py-2.5 text-sm font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-60"
+              >
+                <GlobeLock className="h-3.5 w-3.5" />
+                {isUnpublishing ? "Hiding…" : "Take offline"}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4">

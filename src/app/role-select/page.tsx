@@ -26,10 +26,10 @@ export default function RoleSelectPage() {
   };
 
   return (
-    <main className="min-h-screen bg-linear-to-br from-black via-gray-900 to-black px-4 py-16 text-white sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 px-4 py-16 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
         <div className="mb-10 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-orange-400">Welcome</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-orange-400">Welcome to Food</p>
           <h1 className="mt-4 text-4xl font-extrabold tracking-tight sm:text-5xl">Choose your role</h1>
           <p className="mx-auto mt-4 max-w-2xl text-sm text-gray-300 sm:text-base">
             Customer can browse and purchase food. Owner can add, update, and delete menu items from the owner dashboard.
@@ -46,7 +46,7 @@ export default function RoleSelectPage() {
           <button
             onClick={() => handleSelect("customer")}
             disabled={loadingRole !== null}
-            className="rounded-3xl border border-orange-400/30 bg-white/5 p-8 text-left shadow-sm backdrop-blur transition hover:-translate-y-1 hover:bg-white/10 disabled:opacity-70"
+            className="rounded-3xl border border-orange-400/30 bg-white/5 p-8 text-left shadow-sm backdrop-blur transition hover:-translate-y-1 hover:border-orange-400/50 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-70"
           >
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-300">Customer</p>
             <h2 className="mt-4 text-2xl font-bold">Browse and order food</h2>
@@ -59,7 +59,7 @@ export default function RoleSelectPage() {
           <button
             onClick={() => handleSelect("restaurant_owner")}
             disabled={loadingRole !== null}
-            className="rounded-3xl border border-orange-400/30 bg-orange-500/10 p-8 text-left shadow-sm backdrop-blur transition hover:-translate-y-1 hover:bg-orange-500/20 disabled:opacity-70"
+            className="rounded-3xl border border-orange-400/30 bg-orange-500/10 p-8 text-left shadow-sm backdrop-blur transition hover:-translate-y-1 hover:border-orange-400/50 hover:bg-orange-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-70"
           >
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-200">Owner</p>
             <h2 className="mt-4 text-2xl font-bold">Manage your menu</h2>

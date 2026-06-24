@@ -9,6 +9,7 @@ import { restaurantTypes } from "./constants";
 import { MenuItemCard } from "./components/MenuItemCard";
 import { RestaurantHero } from "./components/RestaurantHero";
 import { RestaurantSidebar } from "./components/RestaurantSidebar";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 type Restaurant = Awaited<ReturnType<typeof getOwnerDashboardData>>["restaurants"][number];
 type MenuItem = Awaited<ReturnType<typeof getOwnerDashboardData>>["menuItemsByRestaurant"][number][number];
@@ -60,6 +61,13 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     Record<number, { name: string; price: string; description: string; categoryId: string; isVeg: boolean; image: string }>
   >({});
   const [menuFilePreview, setMenuFilePreview] = useState("");
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    description: string;
+    destructive?: boolean;
+    confirmLabel?: string;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
 
   const selectedRestaurant = useMemo(
     () => restaurants.find((r) => r.id === selectedRestaurantId) ?? null,
@@ -246,27 +254,121 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     }
   };
 
-  const deleteRestaurant = async () => {
-    if (!selectedRestaurant) return;
-    if (!window.confirm(`Delete "${selectedRestaurant.name}"? This also removes its menu items.`)) return;
-    setBusyAction("delete-restaurant");
+  const saveRestaurant = async ({ published }: { published?: boolean } = {}) => {
+    if (!selectedRestaurant) return false;
+    const actionKey = published === true ? "publish-restaurant" : published === false ? "unpublish-restaurant" : "update-restaurant";
+    setBusyAction(actionKey);
     try {
       const response = await fetch("/api/restaurants", {
-        method: "DELETE",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selectedRestaurant.id }),
+        body: JSON.stringify({
+          id: selectedRestaurant.id,
+          name: restaurantEdit.name,
+          address: restaurantEdit.address,
+          type: restaurantEdit.type,
+          image: selectedRestaurantImage || restaurantEdit.image || selectedRestaurant.image,
+          published: published ?? restaurantEdit.published,
+          categories: restaurantEdit.categories,
+        }),
       });
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || "Could not delete restaurant");
+        throw new Error(error.error || "Could not update restaurant");
       }
-      showNotice("success", "Restaurant deleted.");
-      router.refresh();
+      if (published !== undefined) {
+        setRestaurantEdit((c) => ({ ...c, published }));
+      }
+      return true;
     } catch (error) {
-      showNotice("error", error instanceof Error ? error.message : "Could not delete restaurant");
+      showNotice("error", error instanceof Error ? error.message : "Could not update restaurant");
+      return false;
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const publishRestaurant = () => {
+    if (!selectedRestaurant) return;
+
+    if (restaurantItems.length === 0) {
+      setConfirm({
+        title: "Publish without menu items?",
+        description: `"${selectedRestaurant.name}" has no menu items yet.\n\nPublish anyway? Customers will see the restaurant but won't be able to order food until you add items.`,
+        confirmLabel: "Publish",
+        onConfirm: async () => {
+          setConfirm(null);
+          const ok = await saveRestaurant({ published: true });
+          if (!ok) return;
+          showNotice("success", `"${selectedRestaurant.name}" is live. Add menu items so customers can order.`);
+          router.refresh();
+        },
+      });
+      return;
+    }
+
+    setConfirm({
+      title: "Publish restaurant?",
+      description: `Publish "${selectedRestaurant.name}"?\n\n${restaurantItems.length} menu item${restaurantItems.length === 1 ? "" : "s"} will go live and appear in customer search.`,
+      confirmLabel: "Publish",
+      onConfirm: async () => {
+        setConfirm(null);
+        const ok = await saveRestaurant({ published: true });
+        if (!ok) return;
+        showNotice(
+          "success",
+          `"${selectedRestaurant.name}" is live with ${restaurantItems.length} menu item${restaurantItems.length === 1 ? "" : "s"}!`
+        );
+        router.refresh();
+      },
+    });
+  };
+
+  const unpublishRestaurant = () => {
+    if (!selectedRestaurant) return;
+    setConfirm({
+      title: "Unpublish restaurant?",
+      description: `Hide "${selectedRestaurant.name}" from customer search?`,
+      confirmLabel: "Unpublish",
+      onConfirm: async () => {
+        setConfirm(null);
+        const ok = await saveRestaurant({ published: false });
+        if (!ok) return;
+        showNotice("success", `"${selectedRestaurant.name}" is now hidden from customers.`);
+        router.refresh();
+      },
+    });
+  };
+
+  const deleteRestaurant = () => {
+    if (!selectedRestaurant) return;
+    setConfirm({
+      title: "Delete restaurant?",
+      description: `Delete "${selectedRestaurant.name}"? This also removes its menu items.`,
+      destructive: true,
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        setConfirm(null);
+        setBusyAction("delete-restaurant");
+        try {
+          const response = await fetch("/api/restaurants", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: selectedRestaurant.id }),
+          });
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || "Could not delete restaurant");
+          }
+          showNotice("success", "Restaurant deleted.");
+          router.refresh();
+        } catch (error) {
+          showNotice("error", error instanceof Error ? error.message : "Could not delete restaurant");
+        } finally {
+          setBusyAction(null);
+        }
+      },
+    });
   };
 
   const createMenuItem = async () => {
@@ -373,32 +475,40 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     }
   };
 
-  const deleteMenuItem = async (itemId: number) => {
-    if (!window.confirm("Delete this menu item?")) return;
-    setBusyAction(`delete-${itemId}`);
-    try {
-      const response = await fetch("/api/menu-items", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: itemId }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || "Could not delete menu item");
-      }
-      showNotice("success", "Menu item deleted.");
-      router.refresh();
-    } catch (error) {
-      showNotice("error", error instanceof Error ? error.message : "Could not delete menu item");
-    } finally {
-      setBusyAction(null);
-    }
+  const deleteMenuItem = (itemId: number) => {
+    setConfirm({
+      title: "Delete menu item?",
+      description: "Delete this menu item? This cannot be undone.",
+      destructive: true,
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        setConfirm(null);
+        setBusyAction(`delete-${itemId}`);
+        try {
+          const response = await fetch("/api/menu-items", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: itemId }),
+          });
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || "Could not delete menu item");
+          }
+          showNotice("success", "Menu item deleted.");
+          router.refresh();
+        } catch (error) {
+          showNotice("error", error instanceof Error ? error.message : "Could not delete menu item");
+        } finally {
+          setBusyAction(null);
+        }
+      },
+    });
   };
 
   const hasRestaurants = restaurants.length > 0;
 
   return (
-    <main className="min-h-screen bg-[#fffaf5]">
+    <main className="min-h-screen bg-surface-cream">
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 opacity-[0.03]"
@@ -436,7 +546,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                 </div>
                 <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.3em] text-orange-500">Get started</p>
                 <h2 className="mt-1.5 text-2xl font-black text-slate-900 sm:text-3xl">Create your first restaurant</h2>
-                <p className="mt-2 text-slate-500">Fill in the details below to list your restaurant on GourmetGo.</p>
+                <p className="mt-2 text-slate-500">Fill in the details below to list your restaurant on Food.</p>
 
                 <div className="mt-8 space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -597,7 +707,10 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                     selectedImage={selectedRestaurantImage}
                     onImagePick={(f) => void handleRestaurantImagePick(f, "edit")}
                     onSave={updateRestaurant}
+                    onPublish={() => void publishRestaurant()}
+                    onUnpublish={() => void unpublishRestaurant()}
                     onDelete={deleteRestaurant}
+                    menuItemCount={restaurantItems.length}
                     busyAction={busyAction}
                     uploadProgress={uploadProgress}
                     allCategories={categories}
@@ -769,6 +882,17 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm?.title ?? ""}
+        description={confirm?.description ?? ""}
+        confirmLabel={confirm?.confirmLabel}
+        destructive={confirm?.destructive}
+        busy={busyAction !== null}
+        onConfirm={() => void confirm?.onConfirm()}
+        onCancel={() => setConfirm(null)}
+      />
     </main>
   );
 }

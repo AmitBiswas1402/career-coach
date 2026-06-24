@@ -1,12 +1,13 @@
-import Categories from "@/components/Categories"
-import Hero from "@/components/Hero"
+import Categories from "@/components/Categories";
+import Hero from "@/components/Hero";
 
 const Home = () => {
   return (
-    <div>
+    <div className="min-h-screen bg-surface-cream">
       <Hero />
       <Categories />
     </div>
-  )
-}
-export default Home
+  );
+};
+
+export default Home;

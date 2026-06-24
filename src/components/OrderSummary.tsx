@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 import { getCart, updateCartItemQuantity, removeFromCart } from "@/actions/cart.action";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface CartItem {
   menuItemId: number;
@@ -42,7 +44,6 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
       setLoading(true);
       await updateCartItemQuantity(menuItemId, newQuantity);
 
-      // Update local state
       if (newQuantity <= 0) {
         setCart(cart.filter((item) => item.menuItemId !== menuItemId));
       } else {
@@ -78,46 +79,47 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
 
   if (cart.length === 0) {
     return (
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="mb-4 text-2xl font-bold text-gray-900">Order Summary</h2>
-        <p className="text-center text-gray-500">Your cart is empty</p>
+      <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm sm:p-6">
+        <SectionHeader title="Order Summary" description="Your cart is empty. Add dishes from the menu." />
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-      <h2 className="mb-6 text-2xl font-bold text-gray-900">Order Summary</h2>
+    <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm sm:p-6">
+      <SectionHeader title="Order Summary" badge={`${cart.length} items`} className="mb-6" />
 
-      {/* Cart Items */}
-      <div className="mb-6 divide-y divide-gray-100 border-b border-gray-200">
+      <div className="mb-6 divide-y divide-orange-50 border-b border-orange-100">
         {cart.map((item) => (
-          <div key={item.menuItemId} className="flex items-center justify-between py-4">
-            <div className="flex-1">
-              <p className="font-medium text-gray-900">{item.name}</p>
+          <div key={item.menuItemId} className="flex items-center justify-between gap-3 py-4">
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-gray-900">{item.name}</p>
               <p className="text-sm text-orange-600">₹{item.price}</p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => handleQuantityChange(item.menuItemId, item.quantity - 1)}
                 disabled={loading}
-                className="flex h-6 w-6 items-center justify-center rounded bg-gray-100 text-sm font-semibold hover:bg-gray-200 disabled:opacity-50"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-orange-200 bg-orange-50 text-sm font-semibold text-orange-700 transition hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"
               >
                 −
               </button>
               <span className="w-6 text-center text-sm font-semibold">{item.quantity}</span>
               <button
+                type="button"
                 onClick={() => handleQuantityChange(item.menuItemId, item.quantity + 1)}
                 disabled={loading}
-                className="flex h-6 w-6 items-center justify-center rounded bg-gray-100 text-sm font-semibold hover:bg-gray-200 disabled:opacity-50"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-orange-200 bg-orange-50 text-sm font-semibold text-orange-700 transition hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"
               >
                 +
               </button>
               <button
+                type="button"
                 onClick={() => handleRemove(item.menuItemId)}
                 disabled={loading}
-                className="ml-2 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                className="ml-1 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"
               >
                 Remove
               </button>
@@ -126,7 +128,13 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
         ))}
       </div>
 
-      {/* Pricing Details */}
+      {loading ? (
+        <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
+          Updating cart…
+        </div>
+      ) : null}
+
       <div className="space-y-3">
         <div className="flex justify-between text-sm text-gray-600">
           <span>Subtotal</span>
@@ -142,13 +150,15 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
         </div>
       </div>
 
-      {/* Total */}
-      <div className="mt-4 border-t border-gray-200 pt-4">
+      <div className="mt-4 border-t border-orange-100 pt-4">
         <div className="mb-4 flex justify-between text-lg font-bold text-gray-900">
           <span>Total</span>
           <span>₹{total}</span>
         </div>
-        <button className="w-full rounded-lg bg-orange-600 py-3 font-semibold text-white transition-all hover:bg-orange-700">
+        <button
+          type="button"
+          className="btn-primary w-full py-3 text-sm"
+        >
           Proceed to Checkout
         </button>
       </div>
