@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { CART_COOKIE_NAME, clearCartCookie as clearCartCookieLib } from "@/lib/cart-cookie";
 
 interface CartItem {
   menuItemId: number;
@@ -14,12 +15,12 @@ interface Cart {
   items: CartItem[];
 }
 
-const CART_COOKIE_NAME = "food_delivery_cart";
+const CART_COOKIE_NAME_LOCAL = CART_COOKIE_NAME;
 
 export async function getCart(): Promise<Cart> {
   try {
     const cookieStore = await cookies();
-    const cartCookie = cookieStore.get(CART_COOKIE_NAME);
+    const cartCookie = cookieStore.get(CART_COOKIE_NAME_LOCAL);
 
     if (cartCookie?.value) {
       return JSON.parse(cartCookie.value);
@@ -65,7 +66,7 @@ export async function addToCart(
     }
 
     // Set cookie
-    cookieStore.set(CART_COOKIE_NAME, JSON.stringify(cart), {
+    cookieStore.set(CART_COOKIE_NAME_LOCAL, JSON.stringify(cart), {
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: "/",
     });
@@ -88,7 +89,7 @@ export async function removeFromCart(menuItemId: number): Promise<Cart> {
       cart.restaurantId = null;
     }
 
-    cookieStore.set(CART_COOKIE_NAME, JSON.stringify(cart), {
+    cookieStore.set(CART_COOKIE_NAME_LOCAL, JSON.stringify(cart), {
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
@@ -121,7 +122,7 @@ export async function updateCartItemQuantity(
       }
     }
 
-    cookieStore.set(CART_COOKIE_NAME, JSON.stringify(cart), {
+    cookieStore.set(CART_COOKIE_NAME_LOCAL, JSON.stringify(cart), {
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
@@ -129,6 +130,16 @@ export async function updateCartItemQuantity(
     return cart;
   } catch (error) {
     console.error("Error updating cart:", error);
+    throw error;
+  }
+}
+
+export async function clearCart(): Promise<Cart> {
+  try {
+    await clearCartCookieLib();
+    return { restaurantId: null, items: [] };
+  } catch (error) {
+    console.error("Error clearing cart:", error);
     throw error;
   }
 }

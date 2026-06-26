@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
-import { Globe, GlobeLock, PencilLine, Rocket, Trash2, Upload } from "lucide-react";
+import { useRef } from "react";
+import { GlobeLock, Rocket, Trash2, Upload } from "lucide-react";
 import { restaurantTypes } from "../constants";
 
 type Restaurant = {
@@ -31,15 +31,17 @@ type Props = {
   restaurantEdit: RestaurantEdit;
   onEditChange: (edit: RestaurantEdit) => void;
   selectedImage: string;
+  imagePreview: string;
   onImagePick: (file: File) => void;
-  onSave: () => void;
-  onPublish: () => void;
+  onGoLive: () => void;
   onUnpublish: () => void;
   onDelete: () => void;
   menuItemCount: number;
   busyAction: string | null;
   uploadProgress: { type: string | null; percent: number };
   allCategories: Category[];
+  isGoLiveEnabled: boolean;
+  hasPendingChanges: boolean;
 };
 
 export function RestaurantHero({
@@ -47,47 +49,70 @@ export function RestaurantHero({
   restaurantEdit,
   onEditChange,
   selectedImage,
+  imagePreview,
   onImagePick,
-  onSave,
-  onPublish,
+  onGoLive,
   onUnpublish,
   onDelete,
   menuItemCount,
   busyAction,
   uploadProgress,
   allCategories,
+  isGoLiveEnabled,
+  hasPendingChanges,
 }: Props) {
-  const heroImage = selectedImage || restaurantEdit.image || restaurant.image;
+  const heroImage = imagePreview || selectedImage || restaurantEdit.image || restaurant.image || "";
   const typeLabel = restaurantTypes.find((t) => t.value === restaurantEdit.type)?.label ?? restaurantEdit.type;
   const isLive = restaurantEdit.published;
-  const isPublishing = busyAction === "publish-restaurant";
-  const isUnpublishing = busyAction === "unpublish-restaurant";
+  const isGoingLive = busyAction === "go-live-restaurant";
+  const isUploading = busyAction === "upload-restaurant-image";
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="overflow-hidden rounded-[1.75rem] border border-orange-100 bg-white shadow-sm">
-      <div className="relative h-48 w-full overflow-hidden sm:h-56">
+      <div className="relative h-52 w-full overflow-hidden sm:h-60">
         {heroImage ? (
-          <Image src={heroImage} alt={restaurant.name} fill className="object-cover" sizes="100vw" priority />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={heroImage} alt={restaurant.name} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
-          <div className="h-full w-full bg-linear-to-br from-orange-100 via-orange-50 to-white" />
-        )}
-        <div className="absolute inset-0 bg-linear-to-t from-black/60 via-black/20 to-transparent" />
-
-        {!isLive && (
-          <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
-            <button
-              type="button"
-              onClick={onPublish}
-              disabled={busyAction !== null}
-              className="flex items-center gap-2 rounded-2xl bg-linear-to-r from-green-500 to-emerald-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-green-900/30 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Rocket className="h-4 w-4" />
-              {isPublishing ? "Publishing…" : "Publish restaurant"}
-            </button>
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-linear-to-br from-orange-100 via-orange-50 to-white">
+            <Upload className="h-8 w-8 text-orange-300" />
+            <p className="text-sm font-medium text-orange-400">No cover photo yet</p>
           </div>
         )}
+        <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/70 via-black/25 to-black/10" />
 
-        <div className="absolute bottom-0 left-0 right-0 p-6">
+        <div className="pointer-events-auto absolute bottom-4 right-4 z-20">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/30 bg-black/45 px-3.5 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-md transition hover:bg-black/60 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Upload className="h-4 w-4" />
+            {isUploading
+              ? `Uploading${uploadProgress.type === "restaurant" ? ` ${uploadProgress.percent}%` : "…"}`
+              : heroImage ? "Change cover" : "Upload cover"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImagePick(f);
+              e.target.value = "";
+            }}
+          />
+          {uploadProgress.type === "restaurant" && (
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/20">
+              <div className="h-full bg-orange-400 transition-all" style={{ width: `${uploadProgress.percent}%` }} />
+            </div>
+          )}
+        </div>
+
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 p-6 pr-40 sm:pr-44">
           <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-orange-200">Restaurant</p>
           <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">{restaurant.name}</h2>
           <div className="mt-2 flex flex-wrap gap-2 text-sm text-white/90">
@@ -118,17 +143,20 @@ export function RestaurantHero({
             <p className="mt-1 text-sm text-slate-500">Update how your restaurant appears to customers.</p>
           </div>
           <div className="flex flex-wrap gap-2.5">
-            {!isLive ? (
-              <button
-                type="button"
-                onClick={onPublish}
-                disabled={busyAction !== null}
-                className="flex items-center gap-2 rounded-2xl bg-linear-to-r from-green-500 to-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
-              >
-                <Rocket className="h-3.5 w-3.5" />
-                {isPublishing ? "Publishing…" : "Publish"}
-              </button>
-            ) : (
+            <button
+              type="button"
+              onClick={onGoLive}
+              disabled={!isGoLiveEnabled || busyAction !== null}
+              className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                isGoLiveEnabled
+                  ? "bg-linear-to-r from-green-500 to-emerald-500 text-white hover:opacity-90"
+                  : "border border-green-200 bg-green-50 text-green-700"
+              }`}
+            >
+              <Rocket className="h-3.5 w-3.5" />
+              {isGoingLive ? "Going live…" : isLive && !hasPendingChanges ? "Live" : "Go live"}
+            </button>
+            {isLive ? (
               <button
                 type="button"
                 onClick={onUnpublish}
@@ -136,18 +164,9 @@ export function RestaurantHero({
                 className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
               >
                 <GlobeLock className="h-3.5 w-3.5" />
-                {isUnpublishing ? "Hiding…" : "Unpublish"}
+                {busyAction === "unpublish-restaurant" ? "Hiding…" : "Take offline"}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={busyAction !== null}
-              className="flex items-center gap-2 rounded-2xl bg-linear-to-r from-orange-500 to-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
-            >
-              <PencilLine className="h-3.5 w-3.5" />
-              {busyAction === "update-restaurant" ? "Saving…" : "Save changes"}
-            </button>
+            ) : null}
             <button
               type="button"
               onClick={onDelete}
@@ -161,25 +180,19 @@ export function RestaurantHero({
         </div>
 
         {!isLive && (
-          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-bold text-amber-900">Ready to go live?</p>
-              <p className="mt-0.5 text-sm text-amber-800/80">
-                {menuItemCount > 0
-                  ? `Publishing will make your restaurant and ${menuItemCount} menu item${menuItemCount === 1 ? "" : "s"} visible to customers on search and ordering.`
-                  : "Add menu items below first, then publish when you're ready. You can still publish now and add food later."}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onPublish}
-              disabled={busyAction !== null}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-green-500 to-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
-            >
-              <Globe className="h-4 w-4" />
-              {isPublishing ? "Publishing…" : "Publish now"}
-            </button>
-          </div>
+          <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/70 px-5 py-4 text-sm text-amber-800/80">
+            {hasPendingChanges
+              ? "You have unsaved changes. Click Go live when you're ready to show customers your latest restaurant and menu."
+              : menuItemCount > 0
+                ? "Your restaurant is saved as a draft. Click Go live to make it visible on search and ordering."
+                : "Add menu items below, then click Go live when you're ready. You can go live without menu items and add food later."}
+          </p>
+        )}
+
+        {isLive && hasPendingChanges && (
+          <p className="mt-5 rounded-2xl border border-orange-200 bg-orange-50/70 px-5 py-4 text-sm text-orange-800/80">
+            You have unsaved changes. Click Go live to update what customers see.
+          </p>
         )}
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -224,36 +237,13 @@ export function RestaurantHero({
 
         <div className="mt-4">
           <label className="mb-2 block text-[13px] font-semibold text-slate-700">Visibility</label>
-          <div className="flex flex-wrap items-center gap-3">
-            <span
-              className={`rounded-2xl border px-4 py-2.5 text-sm font-semibold ${
-                isLive ? "border-green-300 bg-green-50 text-green-700" : "border-amber-300 bg-amber-50 text-amber-700"
-              }`}
-            >
-              {isLive ? "Published — visible to customers" : "Draft — hidden from search"}
-            </span>
-            {!isLive ? (
-              <button
-                type="button"
-                onClick={onPublish}
-                disabled={busyAction !== null}
-                className="inline-flex items-center gap-2 rounded-2xl bg-linear-to-r from-green-500 to-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
-              >
-                <Rocket className="h-3.5 w-3.5" />
-                {isPublishing ? "Publishing…" : "Make live"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onUnpublish}
-                disabled={busyAction !== null}
-                className="inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-white px-4 py-2.5 text-sm font-semibold text-amber-700 transition hover:bg-amber-50 disabled:opacity-60"
-              >
-                <GlobeLock className="h-3.5 w-3.5" />
-                {isUnpublishing ? "Hiding…" : "Take offline"}
-              </button>
-            )}
-          </div>
+          <span
+            className={`inline-flex rounded-2xl border px-4 py-2.5 text-sm font-semibold ${
+              isLive ? "border-green-300 bg-green-50 text-green-700" : "border-amber-300 bg-amber-50 text-amber-700"
+            }`}
+          >
+            {isLive ? "Published — visible to customers" : "Draft — hidden from search"}
+          </span>
         </div>
 
         <div className="mt-4">
@@ -284,30 +274,6 @@ export function RestaurantHero({
           </div>
           {restaurant.categories.length > 0 && restaurantEdit.categories.length === 0 && (
             <p className="mt-2 text-xs text-slate-400">Currently linked: {restaurant.categories.map((c) => c.name).join(", ")}</p>
-          )}
-        </div>
-
-        <div className="mt-4">
-          <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">Photo</label>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-orange-300 bg-orange-50/60 px-4 py-2.5 text-sm font-medium text-orange-600 transition hover:bg-orange-50">
-            <Upload className="h-4 w-4" />
-            {busyAction === "upload-restaurant-image"
-              ? `Uploading… ${uploadProgress.type === "restaurant" ? `${uploadProgress.percent}%` : ""}`
-              : "Replace photo"}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onImagePick(f);
-              }}
-            />
-          </label>
-          {uploadProgress.type === "restaurant" && (
-            <div className="mt-3 h-2 w-full max-w-xs overflow-hidden rounded-full bg-orange-50">
-              <div className="h-2 bg-orange-400 transition-all" style={{ width: `${uploadProgress.percent}%` }} />
-            </div>
           )}
         </div>
       </div>

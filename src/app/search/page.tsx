@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { SearchResultsSkeleton } from "@/components/ui/Skeleton";
 import { RestaurantCard } from "@/components/RestaurantCard";
@@ -31,7 +32,7 @@ type PublicMenuItem = {
   isVeg: boolean;
 };
 
-export default function SearchPage() {
+function SearchPageContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get("query") || "";
   const normalizedQuery = query.trim().toLowerCase();
@@ -180,5 +181,19 @@ export default function SearchPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center bg-surface-cream">
+          <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+        </div>
+      }
+    >
+      <SearchPageContent />
+    </Suspense>
   );
 }

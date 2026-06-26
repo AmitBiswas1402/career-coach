@@ -26,6 +26,12 @@ export const userRoleEnum = pgEnum("user_role", [
   "restaurant_owner",
 ]);
 
+export const orderStatusEnum = pgEnum("order_status", [
+  "pending",
+  "paid",
+  "failed",
+]);
+
 /* =========================================================
    USERS TABLE
 ========================================================= */
@@ -256,3 +262,69 @@ export const cartItemsRelations = relations(
     }),
   })
 );
+
+/* =========================================================
+   ORDERS TABLE
+========================================================= */
+
+export const ordersTable = pgTable("orders", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+
+  userId: varchar("user_id", { length: 255 }).notNull(),
+
+  restaurantId: integer("restaurant_id")
+    .notNull()
+    .references(() => restaurantsTable.id, { onDelete: "cascade" }),
+
+  razorpayOrderId: varchar("razorpay_order_id", { length: 255 }).notNull().unique(),
+
+  razorpayPaymentId: varchar("razorpay_payment_id", { length: 255 }),
+
+  subtotal: integer("subtotal").notNull(),
+  deliveryFee: integer("delivery_fee").notNull(),
+  taxes: integer("taxes").notNull(),
+  total: integer("total").notNull(),
+
+  status: orderStatusEnum("status").notNull().default("pending"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const orderItemsTable = pgTable("order_items", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+
+  orderId: integer("order_id")
+    .notNull()
+    .references(() => ordersTable.id, { onDelete: "cascade" }),
+
+  menuItemId: integer("menu_item_id")
+    .notNull()
+    .references(() => menuItemsTable.id, { onDelete: "cascade" }),
+
+  name: varchar("name", { length: 255 }).notNull(),
+
+  price: integer("price").notNull(),
+
+  quantity: integer("quantity").notNull().default(1),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const ordersRelations = relations(ordersTable, ({ one, many }) => ({
+  restaurant: one(restaurantsTable, {
+    fields: [ordersTable.restaurantId],
+    references: [restaurantsTable.id],
+  }),
+  items: many(orderItemsTable),
+}));
+
+export const orderItemsRelations = relations(orderItemsTable, ({ one }) => ({
+  order: one(ordersTable, {
+    fields: [orderItemsTable.orderId],
+    references: [ordersTable.id],
+  }),
+  menuItem: one(menuItemsTable, {
+    fields: [orderItemsTable.menuItemId],
+    references: [menuItemsTable.id],
+  }),
+}));

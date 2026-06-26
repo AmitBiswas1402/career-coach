@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { getOwnerDashboardData } from "@/actions/owner.action";
@@ -22,6 +22,44 @@ const emptyRestaurantDraft = () => ({
   image: "",
   categories: [] as number[],
 });
+
+type RestaurantSnapshot = {
+  name: string;
+  address: string;
+  type: string;
+  image: string;
+  categories: number[];
+  published: boolean;
+};
+
+function snapshotFromRestaurant(restaurant: {
+  name: string;
+  address: string | null;
+  type: string;
+  image: string | null;
+  published: boolean | null;
+  categories: { id: number }[];
+}): RestaurantSnapshot {
+  return {
+    name: restaurant.name,
+    address: restaurant.address || "",
+    type: restaurant.type,
+    image: restaurant.image || "",
+    published: restaurant.published ?? false,
+    categories: restaurant.categories.map((c) => c.id).sort((a, b) => a - b),
+  };
+}
+
+function snapshotsEqual(a: RestaurantSnapshot, b: RestaurantSnapshot) {
+  return (
+    a.name === b.name &&
+    a.address === b.address &&
+    a.type === b.type &&
+    a.image === b.image &&
+    a.published === b.published &&
+    JSON.stringify(a.categories) === JSON.stringify(b.categories)
+  );
+}
 
 export default function OwnerDashboardPage({ initialData }: { initialData: DashboardData }) {
   const router = useRouter();
@@ -48,6 +86,11 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
   });
   const [selectedRestaurantImage, setSelectedRestaurantImage] = useState("");
   const [restaurantFilePreview, setRestaurantFilePreview] = useState("");
+  const [restaurantDirty, setRestaurantDirty] = useState(false);
+  const [goLiveBaseline, setGoLiveBaseline] = useState<RestaurantSnapshot | null>(() => {
+    const initialRestaurant = restaurants[0];
+    return initialRestaurant ? snapshotFromRestaurant(initialRestaurant) : null;
+  });
 
   const [menuForm, setMenuForm] = useState({
     name: "",
@@ -69,6 +112,19 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     onConfirm: () => void | Promise<void>;
   } | null>(null);
 
+  const isMountedRef = useRef(true);
+  const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (noticeTimeoutRef.current) {
+        clearTimeout(noticeTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const selectedRestaurant = useMemo(
     () => restaurants.find((r) => r.id === selectedRestaurantId) ?? null,
     [restaurants, selectedRestaurantId]
@@ -88,18 +144,88 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [restaurantItems]);
 
+  const currentRestaurantImage =
+    restaurantFilePreview ||
+    selectedRestaurantImage ||
+    restaurantEdit.image ||
+    selectedRestaurant?.image ||
+    "";
+
+  const currentRestaurantSnapshot = useMemo((): RestaurantSnapshot | null => {
+    if (!selectedRestaurant) return null;
+    return {
+      name: restaurantEdit.name.trim(),
+      address: restaurantEdit.address.trim(),
+      type: restaurantEdit.type,
+      image: currentRestaurantImage,
+      published: restaurantEdit.published,
+      categories: [...restaurantEdit.categories].sort((a, b) => a - b),
+    };
+  }, [currentRestaurantImage, restaurantEdit, selectedRestaurant]);
+
+  const hasRestaurantChanges = useMemo(() => {
+    if (restaurantDirty) return true;
+    if (!goLiveBaseline || !currentRestaurantSnapshot) return false;
+    return !snapshotsEqual(currentRestaurantSnapshot, goLiveBaseline);
+  }, [restaurantDirty, currentRestaurantSnapshot, goLiveBaseline]);
+
+  const hasMenuDraftChanges = useMemo(() => {
+    return restaurantItems.some((item) => {
+      const draft = menuItemDrafts[item.id];
+      if (!draft) return false;
+      return (
+        draft.name.trim() !== item.name ||
+        draft.price !== String(item.price) ||
+        (draft.description || "") !== (item.description || "") ||
+        (draft.categoryId || "") !== (item.categoryId ? String(item.categoryId) : "") ||
+        (draft.isVeg ?? true) !== (item.isVeg ?? true) ||
+        (draft.image || "") !== (item.image || "")
+      );
+    });
+  }, [menuItemDrafts, restaurantItems]);
+
+  const hasNewMenuForm = useMemo(() => {
+    return Boolean(
+      menuForm.name.trim() ||
+        menuForm.price ||
+        menuForm.description.trim() ||
+        menuForm.categoryId ||
+        menuForm.image
+    );
+  }, [menuForm]);
+
+  const hasPendingChanges = hasRestaurantChanges || hasMenuDraftChanges || hasNewMenuForm;
+
+  const isGoLiveEnabled = useMemo(() => {
+    if (!selectedRestaurant) return false;
+    if (!restaurantEdit.published) return true;
+    return hasPendingChanges;
+  }, [hasPendingChanges, restaurantEdit.published, selectedRestaurant]);
+
+  const syncGoLiveBaseline = (snapshot: RestaurantSnapshot) => {
+    setGoLiveBaseline(snapshot);
+  };
+
   useEffect(() => {
-    if (!selectedRestaurant) return;
+    const restaurant = restaurants.find((r) => r.id === selectedRestaurantId);
+    if (!restaurant) return;
+
+    const snapshot = snapshotFromRestaurant(restaurant);
+    setGoLiveBaseline(snapshot);
+    setRestaurantDirty(false);
     setRestaurantEdit({
-      name: selectedRestaurant.name,
-      address: selectedRestaurant.address || "",
-      type: selectedRestaurant.type,
-      image: selectedRestaurant.image || "",
-      published: selectedRestaurant.published ?? true,
-      categories: selectedRestaurant.categories.map((c) => c.id),
+      name: restaurant.name,
+      address: restaurant.address || "",
+      type: restaurant.type,
+      image: restaurant.image || "",
+      published: restaurant.published ?? true,
+      categories: restaurant.categories.map((c) => c.id),
     });
     setSelectedRestaurantImage("");
-  }, [selectedRestaurantId, selectedRestaurant]);
+    setRestaurantFilePreview("");
+    // Only re-sync form when switching restaurants, not on router.refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRestaurantId]);
 
   useEffect(() => {
     const drafts = restaurantItems.reduce<
@@ -127,13 +253,14 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
       xhr.open("POST", "/api/upload");
 
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
+        if (e.lengthComputable && isMountedRef.current) {
           const p = Math.round((e.loaded / e.total) * 100);
           setUploadProgress({ type, percent: p });
         }
       };
 
       xhr.onload = () => {
+        if (!isMountedRef.current) return;
         setUploadProgress({ type: null, percent: 0 });
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
@@ -155,6 +282,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
       };
 
       xhr.onerror = () => {
+        if (!isMountedRef.current) return;
         setUploadProgress({ type: null, percent: 0 });
         reject(new Error("Network error during upload"));
       };
@@ -164,27 +292,49 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
   };
 
   const showNotice = (type: "success" | "error", text: string) => {
+    if (!isMountedRef.current) return;
+    if (noticeTimeoutRef.current) {
+      clearTimeout(noticeTimeoutRef.current);
+    }
     setNotice({ type, text });
-    setTimeout(() => setNotice(null), 4000);
+    noticeTimeoutRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        setNotice(null);
+      }
+    }, 4000);
   };
 
-  const handleRestaurantImagePick = async (file: File, target: "draft" | "edit" = "edit") => {
-    setRestaurantFilePreview(URL.createObjectURL(file));
+  const handleRestaurantImagePick = async (file: File) => {
+    if (!selectedRestaurant) return;
+
+    const previewUrl = URL.createObjectURL(file);
+    setRestaurantFilePreview(previewUrl);
+    setRestaurantDirty(true);
     setBusyAction("upload-restaurant-image");
+
     try {
       const url = await uploadImage(file, "restaurant");
-      if (target === "draft") {
-        setRestaurantDraft((c) => ({ ...c, image: url }));
-      } else {
-        setSelectedRestaurantImage(url);
-        setRestaurantEdit((c) => ({ ...c, image: url }));
-      }
-      showNotice("success", "Restaurant image uploaded.");
+
+      if (!isMountedRef.current) return;
+
+      setSelectedRestaurantImage(url);
+      setRestaurantEdit((c) => ({ ...c, image: url }));
+      showNotice("success", "Cover photo ready. Click Go live to publish.");
     } catch (error) {
-      showNotice("error", error instanceof Error ? error.message : "Could not upload image");
+      if (!isMountedRef.current) return;
+      showNotice("error", error instanceof Error ? error.message : "Could not upload cover photo");
     } finally {
-      setBusyAction(null);
+      URL.revokeObjectURL(previewUrl);
+      if (isMountedRef.current) {
+        setRestaurantFilePreview("");
+        setBusyAction(null);
+      }
     }
+  };
+
+  const handleRestaurantEditChange = (edit: typeof restaurantEdit) => {
+    setRestaurantEdit(edit);
+    setRestaurantDirty(true);
   };
 
   const handleMenuImagePick = async (file: File) => {
@@ -214,7 +364,9 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
         throw new Error(error.error || "Could not create restaurant");
       }
       showNotice("success", "Restaurant created!");
-      router.refresh();
+      startTransition(() => {
+        router.refresh();
+      });
       setRestaurantDraft(emptyRestaurantDraft());
       setRestaurantFilePreview("");
     } catch (error) {
@@ -224,39 +376,14 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     }
   };
 
-  const updateRestaurant = async () => {
-    if (!selectedRestaurant) return;
-    setBusyAction("update-restaurant");
-    try {
-      const response = await fetch("/api/restaurants", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: selectedRestaurant.id,
-          name: restaurantEdit.name,
-          address: restaurantEdit.address,
-          type: restaurantEdit.type,
-          image: selectedRestaurantImage || restaurantEdit.image || selectedRestaurant.image,
-          published: restaurantEdit.published,
-          categories: restaurantEdit.categories,
-        }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || "Could not update restaurant");
-      }
-      showNotice("success", "Restaurant updated successfully.");
-      router.refresh();
-    } catch (error) {
-      showNotice("error", error instanceof Error ? error.message : "Could not update restaurant");
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
   const saveRestaurant = async ({ published }: { published?: boolean } = {}) => {
     if (!selectedRestaurant) return false;
-    const actionKey = published === true ? "publish-restaurant" : published === false ? "unpublish-restaurant" : "update-restaurant";
+    const actionKey =
+      published === true
+        ? "go-live-restaurant"
+        : published === false
+          ? "unpublish-restaurant"
+          : "update-restaurant";
     setBusyAction(actionKey);
     try {
       const response = await fetch("/api/restaurants", {
@@ -288,40 +415,159 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     }
   };
 
-  const publishRestaurant = () => {
+  const saveMenuItemDraft = async (item: MenuItem, { quiet = false }: { quiet?: boolean } = {}) => {
+    const draft = menuItemDrafts[item.id];
+    if (!draft) return false;
+    const parsedPrice = Number(draft.price);
+    if (!draft.name.trim() || !Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      showNotice("error", "Name and valid price are required for all menu items.");
+      return false;
+    }
+    if (!quiet) setBusyAction(`update-${item.id}`);
+    try {
+      const response = await fetch("/api/menu-items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: item.id,
+          name: draft.name.trim(),
+          price: parsedPrice,
+          description: draft.description,
+          categoryId: draft.categoryId ? Number(draft.categoryId) : undefined,
+          isVeg: draft.isVeg,
+          image: draft.image || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Could not update menu item");
+      }
+      return true;
+    } catch (error) {
+      showNotice("error", error instanceof Error ? error.message : "Could not update menu item");
+      return false;
+    } finally {
+      if (!quiet) setBusyAction(null);
+    }
+  };
+
+  const saveAllPendingMenuItems = async () => {
+    const dirtyItems = restaurantItems.filter((item) => {
+      const draft = menuItemDrafts[item.id];
+      if (!draft) return false;
+      return (
+        draft.name.trim() !== item.name ||
+        draft.price !== String(item.price) ||
+        (draft.description || "") !== (item.description || "") ||
+        (draft.categoryId || "") !== (item.categoryId ? String(item.categoryId) : "") ||
+        (draft.isVeg ?? true) !== (item.isVeg ?? true) ||
+        (draft.image || "") !== (item.image || "")
+      );
+    });
+
+    for (const item of dirtyItems) {
+      const ok = await saveMenuItemDraft(item, { quiet: true });
+      if (!ok) return false;
+    }
+    return true;
+  };
+
+  const executeGoLive = async () => {
     if (!selectedRestaurant) return;
 
-    if (restaurantItems.length === 0) {
+    if (hasNewMenuForm) {
+      showNotice("error", "Finish adding the new menu item or clear the form before going live.");
+      return;
+    }
+
+    if (!restaurantEdit.name.trim()) {
+      showNotice("error", "Restaurant name is required.");
+      return;
+    }
+
+    const wasLive = restaurantEdit.published;
+    setBusyAction("go-live-restaurant");
+    try {
+      const menuSaved = await saveAllPendingMenuItems();
+      if (!menuSaved) return;
+
+      const response = await fetch("/api/restaurants", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedRestaurant.id,
+          name: restaurantEdit.name,
+          address: restaurantEdit.address,
+          type: restaurantEdit.type,
+          image: selectedRestaurantImage || restaurantEdit.image || selectedRestaurant.image,
+          published: true,
+          categories: restaurantEdit.categories,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Could not go live");
+      }
+
+      setRestaurantEdit((c) => ({ ...c, published: true }));
+      setRestaurantDirty(false);
+
+      const finalImage = selectedRestaurantImage || restaurantEdit.image || selectedRestaurant.image || "";
+      syncGoLiveBaseline({
+        name: restaurantEdit.name.trim(),
+        address: restaurantEdit.address.trim(),
+        type: restaurantEdit.type,
+        image: finalImage,
+        published: true,
+        categories: [...restaurantEdit.categories].sort((a, b) => a - b),
+      });
+
+      showNotice(
+        "success",
+        wasLive
+          ? `"${selectedRestaurant.name}" is updated and live.`
+          : `"${selectedRestaurant.name}" is now live${restaurantItems.length > 0 ? ` with ${restaurantItems.length} menu item${restaurantItems.length === 1 ? "" : "s"}` : ""}!`
+      );
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch (error) {
+      showNotice("error", error instanceof Error ? error.message : "Could not go live");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const goLive = () => {
+    if (!selectedRestaurant || !isGoLiveEnabled) return;
+
+    if (!restaurantEdit.published && restaurantItems.length === 0) {
       setConfirm({
-        title: "Publish without menu items?",
-        description: `"${selectedRestaurant.name}" has no menu items yet.\n\nPublish anyway? Customers will see the restaurant but won't be able to order food until you add items.`,
-        confirmLabel: "Publish",
+        title: "Go live without menu items?",
+        description: `"${selectedRestaurant.name}" has no menu items yet.\n\nGo live anyway? Customers will see the restaurant but won't be able to order food until you add items.`,
+        confirmLabel: "Go live",
         onConfirm: async () => {
           setConfirm(null);
-          const ok = await saveRestaurant({ published: true });
-          if (!ok) return;
-          showNotice("success", `"${selectedRestaurant.name}" is live. Add menu items so customers can order.`);
-          router.refresh();
+          await executeGoLive();
         },
       });
       return;
     }
 
-    setConfirm({
-      title: "Publish restaurant?",
-      description: `Publish "${selectedRestaurant.name}"?\n\n${restaurantItems.length} menu item${restaurantItems.length === 1 ? "" : "s"} will go live and appear in customer search.`,
-      confirmLabel: "Publish",
-      onConfirm: async () => {
-        setConfirm(null);
-        const ok = await saveRestaurant({ published: true });
-        if (!ok) return;
-        showNotice(
-          "success",
-          `"${selectedRestaurant.name}" is live with ${restaurantItems.length} menu item${restaurantItems.length === 1 ? "" : "s"}!`
-        );
-        router.refresh();
-      },
-    });
+    if (!restaurantEdit.published) {
+      setConfirm({
+        title: "Go live?",
+        description: `Make "${selectedRestaurant.name}" visible to customers${restaurantItems.length > 0 ? ` with ${restaurantItems.length} menu item${restaurantItems.length === 1 ? "" : "s"}` : ""}?`,
+        confirmLabel: "Go live",
+        onConfirm: async () => {
+          setConfirm(null);
+          await executeGoLive();
+        },
+      });
+      return;
+    }
+
+    void executeGoLive();
   };
 
   const unpublishRestaurant = () => {
@@ -334,8 +580,14 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
         setConfirm(null);
         const ok = await saveRestaurant({ published: false });
         if (!ok) return;
+        if (currentRestaurantSnapshot) {
+          syncGoLiveBaseline({ ...currentRestaurantSnapshot, published: false });
+        }
+        setRestaurantDirty(false);
         showNotice("success", `"${selectedRestaurant.name}" is now hidden from customers.`);
-        router.refresh();
+        startTransition(() => {
+          router.refresh();
+        });
       },
     });
   };
@@ -421,36 +673,12 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
   };
 
   const updateMenuItemDraft = async (item: MenuItem) => {
-    const draft = menuItemDrafts[item.id];
-    if (!draft) return;
-    const parsedPrice = Number(draft.price);
-    if (!draft.name.trim() || !Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-      showNotice("error", "Name and valid price are required.");
-      return;
-    }
     setBusyAction(`update-${item.id}`);
     try {
-      const response = await fetch("/api/menu-items", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: item.id,
-          name: draft.name.trim(),
-          price: parsedPrice,
-          description: draft.description,
-          categoryId: draft.categoryId ? Number(draft.categoryId) : undefined,
-          isVeg: draft.isVeg,
-          image: draft.image || undefined,
-        }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || "Could not update menu item");
-      }
+      const ok = await saveMenuItemDraft(item, { quiet: true });
+      if (!ok) return;
       showNotice("success", "Menu item updated.");
       router.refresh();
-    } catch (error) {
-      showNotice("error", error instanceof Error ? error.message : "Could not update menu item");
     } finally {
       setBusyAction(null);
     }
@@ -622,41 +850,6 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                     </div>
                   </div>
 
-                  <div>
-                    <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">Restaurant photo</label>
-                    <label className="flex h-12 cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-orange-300 bg-orange-50/60 px-4 text-sm font-medium text-orange-600 transition hover:bg-orange-50">
-                      <Upload className="h-4 w-4" />
-                      {busyAction === "upload-restaurant-image"
-                        ? `Uploading... ${uploadProgress.type === "restaurant" ? `${uploadProgress.percent}%` : ""}`
-                        : "Upload a photo"}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) void handleRestaurantImagePick(f, "draft");
-                        }}
-                      />
-                    </label>
-                    {uploadProgress.type === "restaurant" && (
-                      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-orange-50">
-                        <div className="h-2 bg-orange-400 transition-all" style={{ width: `${uploadProgress.percent}%` }} />
-                      </div>
-                    )}
-                    {(restaurantFilePreview || restaurantDraft.image) && (
-                      <div className="relative mt-3 h-44 overflow-hidden rounded-2xl border border-orange-100">
-                        <Image
-                          src={restaurantFilePreview || restaurantDraft.image}
-                          alt="Preview"
-                          fill
-                          className="object-cover"
-                          sizes="600px"
-                        />
-                      </div>
-                    )}
-                  </div>
-
                   <div className="flex justify-end gap-3 pt-2">
                     <button
                       type="button"
@@ -674,7 +867,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                       disabled={busyAction !== null || !restaurantDraft.name.trim()}
                       className="rounded-2xl bg-linear-to-r from-orange-500 to-amber-500 px-6 py-3 text-sm font-bold text-white shadow-md shadow-orange-200 transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {busyAction === "create-restaurant" ? "Creating…" : "Publish restaurant"}
+                      {busyAction === "create-restaurant" ? "Creating…" : "Create restaurant"}
                     </button>
                   </div>
                 </div>
@@ -690,10 +883,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
               restaurantDraft={restaurantDraft}
               onDraftChange={setRestaurantDraft}
               onCreateRestaurant={createRestaurant}
-              onImagePick={(f) => void handleRestaurantImagePick(f, "draft")}
-              filePreview={restaurantFilePreview}
               busyAction={busyAction}
-              uploadProgress={uploadProgress}
               allCategories={categories}
             />
 
@@ -703,17 +893,19 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                   <RestaurantHero
                     restaurant={selectedRestaurant}
                     restaurantEdit={restaurantEdit}
-                    onEditChange={setRestaurantEdit}
+                    onEditChange={handleRestaurantEditChange}
                     selectedImage={selectedRestaurantImage}
-                    onImagePick={(f) => void handleRestaurantImagePick(f, "edit")}
-                    onSave={updateRestaurant}
-                    onPublish={() => void publishRestaurant()}
+                    imagePreview={restaurantFilePreview}
+                    onImagePick={(f) => void handleRestaurantImagePick(f)}
+                    onGoLive={() => void goLive()}
                     onUnpublish={() => void unpublishRestaurant()}
                     onDelete={deleteRestaurant}
                     menuItemCount={restaurantItems.length}
                     busyAction={busyAction}
                     uploadProgress={uploadProgress}
                     allCategories={categories}
+                    isGoLiveEnabled={isGoLiveEnabled}
+                    hasPendingChanges={hasPendingChanges}
                   />
 
                   <div className="overflow-hidden rounded-[1.75rem] border border-orange-100 bg-white shadow-sm">

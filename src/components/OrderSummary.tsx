@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth, useClerk } from "@clerk/nextjs";
 import { Loader2 } from "lucide-react";
 import { getCart, updateCartItemQuantity, removeFromCart } from "@/actions/cart.action";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -17,9 +19,29 @@ interface OrderSummaryProps {
   refreshTrigger: number;
 }
 
+function loadRazorpayScript() {
+  return new Promise<boolean>((resolve) => {
+    if (typeof window !== "undefined" && window.Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps) {
+  const router = useRouter();
+  const { isSignedIn } = useAuth();
+  const { openSignIn } = useClerk();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCart = async () => {
@@ -72,6 +94,88 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
     }
   };
 
+  const handleCheckout = useCallback(async () => {
+    setCheckoutError(null);
+
+    if (!isSignedIn) {
+      openSignIn();
+      return;
+    }
+
+    if (!cart.length) {
+      return;
+    }
+
+    try {
+      setCheckoutLoading(true);
+
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded || !window.Razorpay) {
+        setCheckoutError("Failed to load payment gateway. Please try again.");
+        return;
+      }
+
+      const createResponse = await fetch("/api/payments/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId }),
+      });
+
+      const createData = await createResponse.json();
+
+      if (!createResponse.ok) {
+        setCheckoutError(createData.error ?? "Failed to start checkout");
+        return;
+      }
+
+      const razorpay = new window.Razorpay({
+        key: createData.keyId,
+        amount: createData.amount,
+        currency: createData.currency,
+        name: "Food",
+        description: "Food delivery order",
+        order_id: createData.razorpayOrderId,
+        prefill: createData.prefill,
+        handler: async (response) => {
+          try {
+            const verifyResponse = await fetch("/api/payments/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                orderId: createData.orderId,
+              }),
+            });
+
+            const verifyData = await verifyResponse.json();
+
+            if (!verifyResponse.ok) {
+              setCheckoutError(verifyData.error ?? "Payment verification failed");
+              return;
+            }
+
+            router.push(`/payment/success?orderId=${verifyData.orderId}`);
+          } catch (error) {
+            console.error("Payment verification error:", error);
+            setCheckoutError("Payment verification failed. Please contact support.");
+          }
+        },
+        modal: {
+          ondismiss: () => setCheckoutLoading(false),
+        },
+      });
+
+      razorpay.open();
+    } catch (error) {
+      console.error("Checkout error:", error);
+      setCheckoutError("Something went wrong during checkout. Please try again.");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }, [cart.length, isSignedIn, openSignIn, restaurantId, router]);
+
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const deliveryFee = 40;
   const taxes = Math.round(subtotal * 0.1);
@@ -101,7 +205,7 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
               <button
                 type="button"
                 onClick={() => handleQuantityChange(item.menuItemId, item.quantity - 1)}
-                disabled={loading}
+                disabled={loading || checkoutLoading}
                 className="flex h-7 w-7 items-center justify-center rounded-lg border border-orange-200 bg-orange-50 text-sm font-semibold text-orange-700 transition hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"
               >
                 −
@@ -110,7 +214,7 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
               <button
                 type="button"
                 onClick={() => handleQuantityChange(item.menuItemId, item.quantity + 1)}
-                disabled={loading}
+                disabled={loading || checkoutLoading}
                 className="flex h-7 w-7 items-center justify-center rounded-lg border border-orange-200 bg-orange-50 text-sm font-semibold text-orange-700 transition hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"
               >
                 +
@@ -118,7 +222,7 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
               <button
                 type="button"
                 onClick={() => handleRemove(item.menuItemId)}
-                disabled={loading}
+                disabled={loading || checkoutLoading}
                 className="ml-1 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 disabled:opacity-50"
               >
                 Remove
@@ -155,11 +259,27 @@ export function OrderSummary({ restaurantId, refreshTrigger }: OrderSummaryProps
           <span>Total</span>
           <span>₹{total}</span>
         </div>
+
+        {checkoutError ? (
+          <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{checkoutError}</p>
+        ) : null}
+
         <button
           type="button"
-          className="btn-primary w-full py-3 text-sm"
+          onClick={handleCheckout}
+          disabled={loading || checkoutLoading}
+          className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm disabled:opacity-60"
         >
-          Proceed to Checkout
+          {checkoutLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Processing…
+            </>
+          ) : isSignedIn ? (
+            "Proceed to Checkout"
+          ) : (
+            "Sign in to Checkout"
+          )}
         </button>
       </div>
     </div>

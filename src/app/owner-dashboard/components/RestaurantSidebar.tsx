@@ -1,7 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import { Plus, Store, Upload } from "lucide-react";
+import { Plus, Store } from "lucide-react";
 import { restaurantTypes } from "../constants";
 
 type Restaurant = {
@@ -30,10 +29,7 @@ type Props = {
   restaurantDraft: RestaurantDraft;
   onDraftChange: (draft: RestaurantDraft) => void;
   onCreateRestaurant: () => void;
-  onImagePick: (file: File) => void;
-  filePreview: string;
   busyAction: string | null;
-  uploadProgress: { type: string | null; percent: number };
   allCategories: Category[];
 };
 
@@ -41,7 +37,8 @@ function RestaurantThumb({ image, name }: { image: string | null; name: string }
   if (image) {
     return (
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-orange-100">
-        <Image src={image} alt={name} fill className="object-cover" sizes="48px" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt={name} className="h-full w-full object-cover" />
       </div>
     );
   }
@@ -69,10 +66,7 @@ export function RestaurantSidebar({
   restaurantDraft,
   onDraftChange,
   onCreateRestaurant,
-  onImagePick,
-  filePreview,
   busyAction,
-  uploadProgress,
   allCategories,
 }: Props) {
   return (
@@ -187,33 +181,6 @@ export function RestaurantSidebar({
               })}
             </div>
           </div>
-
-          <label className="flex h-11 cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-orange-300 bg-orange-50/60 px-3.5 text-sm font-medium text-orange-600 transition hover:bg-orange-50">
-            <Upload className="h-4 w-4" />
-            {busyAction === "upload-restaurant-image"
-              ? `Uploading… ${uploadProgress.type === "restaurant" ? `${uploadProgress.percent}%` : ""}`
-              : "Upload photo"}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onImagePick(f);
-              }}
-            />
-          </label>
-          {(filePreview || restaurantDraft.image) && (
-            <div className="relative h-24 overflow-hidden rounded-xl border border-orange-100">
-              <Image
-                src={filePreview || restaurantDraft.image}
-                alt="Preview"
-                fill
-                className="object-cover"
-                sizes="280px"
-              />
-            </div>
-          )}
 
           <button
             type="button"

@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
           type: type as "veg" | "non-veg" | "both",
           image: image || null,
           rating: rating,
-          published: true,
+          published: false,
           ownerId: Number(dbUser.id),
         })
         .returning(restaurantSelectFields);
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
               name,
               type: type as "veg" | "non-veg" | "both",
               rating: rating,
-              published: true,
+              published: false,
               ownerId: Number(dbUser.id),
             })
             .returning({ id: restaurantsTable.id });
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
             image: image || null,
             type,
             rating,
-            published: true,
+            published: false,
             ownerId: Number(dbUser.id),
           };
 
