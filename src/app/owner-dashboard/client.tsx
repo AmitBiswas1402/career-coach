@@ -194,6 +194,22 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     );
   }, [menuForm]);
 
+  const menuCategories = useMemo(() => {
+    if (selectedRestaurant && selectedRestaurant.categories.length > 0) {
+      return selectedRestaurant.categories;
+    }
+    return categories;
+  }, [categories, selectedRestaurant]);
+
+  const canAddMenuItem = useMemo(() => {
+    if (busyAction === "create-menu-item" || busyAction === "upload-menu-image") return false;
+    const hasName = Boolean(menuForm.name.trim());
+    const parsedPrice = Number(menuForm.price);
+    const hasPrice = Number.isFinite(parsedPrice) && parsedPrice > 0;
+    const hasImage = Boolean(menuForm.image || menuFilePreview);
+    return hasName && hasPrice && hasImage;
+  }, [busyAction, menuForm.name, menuForm.price, menuForm.image, menuFilePreview]);
+
   const hasPendingChanges = hasRestaurantChanges || hasMenuDraftChanges || hasNewMenuForm;
 
   const isGoLiveEnabled = useMemo(() => {
@@ -223,6 +239,10 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
     });
     setSelectedRestaurantImage("");
     setRestaurantFilePreview("");
+    const defaultCategoryId =
+      restaurant.categories.length === 1 ? String(restaurant.categories[0].id) : "";
+    setMenuForm({ name: "", price: "", description: "", categoryId: defaultCategoryId, isVeg: true, image: "" });
+    setMenuFilePreview("");
     // Only re-sync form when switching restaurants, not on router.refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRestaurantId]);
@@ -969,8 +989,8 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                               onChange={(e) => setMenuForm((c) => ({ ...c, categoryId: e.target.value }))}
                               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition"
                             >
-                              <option value="">Category</option>
-                              {categories.map((cat) => (
+                              <option value="">Select category</option>
+                              {menuCategories.map((cat) => (
                                 <option key={cat.id} value={cat.id}>
                                   {cat.name}
                                 </option>
@@ -1004,9 +1024,7 @@ export default function OwnerDashboardPage({ initialData }: { initialData: Dashb
                             <button
                               type="button"
                               onClick={createMenuItem}
-                              disabled={
-                                !menuForm.name.trim() || !menuForm.categoryId || !menuForm.image || busyAction !== null
-                              }
+                              disabled={!canAddMenuItem}
                               className="flex items-center gap-2 rounded-2xl bg-linear-to-r from-orange-500 to-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               <Plus className="h-4 w-4" />
